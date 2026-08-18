@@ -37,6 +37,6 @@ on the capture stack.
 
 ## Documentation
 
-[`docs/PROTOCOL.md`](https://github.com/PetitCastor/StarCitizenTracker/blob/master/docs/PROTOCOL.md)
+[`docs/PROTOCOL.md`](https://github.com/PetitCastor/gamecapture-engine/blob/master/docs/PROTOCOL.md)
 — transport, handshake, version policy, coordinate spaces. Changes to `protos/capture.proto` are
 lint- and breaking-change-checked by `buf` in CI.

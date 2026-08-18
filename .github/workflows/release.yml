@@ -35,18 +35,18 @@ jobs:
       # be pushed from any commit), so release re-verifies rather than trusting the CI run that may
       # have happened on a different ref.
       - name: Restore
-        run: dotnet restore GameCapture.slnx
+        run: dotnet restore GameCaptureEngine.slnx
 
       - name: Build
-        run: dotnet build GameCapture.slnx --no-restore -c Release
+        run: dotnet build GameCaptureEngine.slnx --no-restore -c Release
 
       - name: Test
-        run: dotnet test GameCapture.slnx --no-build -c Release --verbosity normal
+        run: dotnet test GameCaptureEngine.slnx --no-build -c Release --verbosity normal
 
       - name: Pack
-        run: dotnet pack GameCapture.slnx --no-build -c Release -o packages
+        run: dotnet pack GameCaptureEngine.slnx --no-build -c Release -o packages
 
-      # Not part of GameCapture.slnx by design (TASK-18/19 — it must never join the main build,
+      # Not part of GameCaptureEngine.slnx by design (it must never join the main build,
       # or its EnableDefaultItems=false untouched-content model breaks), so the slnx pack above
       # never sees it. Packed separately, into the same output dir, so the push steps below pick
       # it up alongside the other three package IDs without a change to their globs.
@@ -67,10 +67,9 @@ jobs:
       # executables (only cmdlet parameters) — `GameCapture.Engine-*.zip` reaches `gh` as that
       # literal string, `gh` does not glob either, and every run that tried it failed here. The name
       # was already computed to build the archive above, so reusing it can't drift.
-      # Ordered ahead of the NuGet steps on purpose: TASK-17 doesn't wire a real trusted-publishing
-      # policy (that's TASK-22, since policies are per-repository and this mono-repo isn't the repo
-      # that survives), so the NuGet steps below will fail OIDC exchange for any tag pushed before
-      # then. Putting the GitHub release first means that failure doesn't also cost the release.
+      # Ordered ahead of the NuGet steps on purpose: if the OIDC exchange or the nuget.org push
+      # fails, the GitHub release and its engine zip have already landed rather than being lost
+      # along with it.
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

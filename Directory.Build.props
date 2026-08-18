@@ -9,12 +9,12 @@
     <Company>PetitCastor</Company>
     <Copyright>Copyright (c) PetitCastor</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/PetitCastor/StarCitizenTracker</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/PetitCastor/gamecapture-engine</PackageProjectUrl>
 
-    <!-- The repository as it exists today. The engine/plugins split (TASK-22/23) moves this to
-         PetitCastor/gamecapture-engine; pointing at that repo before it exists would embed
-         SourceLink URLs that 404 for every package published in between. -->
-    <RepositoryUrl>https://github.com/PetitCastor/StarCitizenTracker</RepositoryUrl>
+    <!-- This repository. Every package on nuget.org is published from here, so SourceLink resolves
+         into this history — which is why the first published version is tagged here rather than in
+         the mono-repo this was extracted from. -->
+    <RepositoryUrl>https://github.com/PetitCastor/gamecapture-engine</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
@@ -49,9 +49,9 @@
   </PropertyGroup>
 
   <!-- Nothing ships unless it says so. Only the three consumable libraries flip this back to true
-       (GameCapture.Contracts, GameCapture.Sdk, GameCapture.Sdk.Testing); the engine is a release-zip exe, the
-       plugins are applications, and a test project has no business on a feed. Opt-in rather than
-       opt-out so a project added later cannot be published by forgetting a line. -->
+       (GameCapture.Contracts, GameCapture.Sdk, GameCapture.Sdk.Testing); the engine is a release-zip
+       exe, and a test project has no business on a feed. Opt-in rather than opt-out so a project
+       added later cannot be published by forgetting a line. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>

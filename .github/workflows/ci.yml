@@ -31,26 +31,25 @@ jobs:
           dotnet-version: '10.0.x'
 
       # Whole solution in one shot: the wire contract (protoc codegen included, the most breakable
-      # part), the engine, both plugins and all five test projects. A green CI that skipped any of
-      # them would be merging a split that no longer joins back up.
+      # part), the engine, the SDK trio and all four test projects. A green CI that skipped any of
+      # them would be shipping packages whose halves no longer join back up.
       - name: Restore
-        run: dotnet restore GameCapture.slnx
+        run: dotnet restore GameCaptureEngine.slnx
 
       - name: Build
-        run: dotnet build GameCapture.slnx --no-restore -c Release
+        run: dotnet build GameCaptureEngine.slnx --no-restore -c Release
 
       - name: Test
-        run: dotnet test GameCapture.slnx --no-build -c Release --verbosity normal
+        run: dotnet test GameCaptureEngine.slnx --no-build -c Release --verbosity normal
 
       # Scoped to the test projects named directly after the three packages that ship (Contracts,
-      # Engine, Sdk) — not the plugin test projects, which test Star-Citizen-specific parsers that
-      # never leave this repo. GameCapture.Sdk.Testing ships too but is measured by its own
-      # dedicated suite, not this gate; -assemblyfilters below drops it out of the aggregate rather
-      # than let it sit half-counted (only incidentally touched via Engine.Tests' reference).
+      # Engine, Sdk). GameCapture.Sdk.Testing ships too but is measured by its own dedicated suite,
+      # not this gate; -assemblyfilters below drops it out of the aggregate rather than let it sit
+      # half-counted (only incidentally touched via Engine.Tests' reference).
       # Re-runs these three rather than reusing the Test step above because coverlet's collector
       # only activates per-invocation via --collect, and mixing collected/uncollected projects in
-      # one `dotnet test GameCapture.slnx` call isn't possible — VSTest applies one settings file
-      # to the whole run.
+      # one `dotnet test GameCaptureEngine.slnx` call isn't possible — VSTest applies one settings
+      # file to the whole run.
       - name: Test with coverage
         shell: bash
         run: |
@@ -99,20 +98,9 @@ jobs:
             exit 1
           fi
 
-      # A plugin owns parsing and nothing else: its code must not name a transport type (Grpc,
-      # RpcException), the wire proto namespace, or the engine assembly. `dotnet build` cannot catch a
-      # re-coupling — a plugin that added `using Grpc.Core;` still compiles — so this greps the plugin
-      # SOURCES (.cs only: the engine pipe name legitimately appears as a string in config.json) for
-      # the forbidden references. rg exits 0 when it finds a hit and 1 when it finds none, so a hit is
-      # the failure: report it and exit 1, otherwise let the clean (rg-1) run pass.
-      - name: Plugin boundary grep gate
-        shell: bash
-        run: |
-          if rg -n -g '*.cs' "using Grpc|RpcException|GameCapture\.Contracts\.Proto|GameCapture\.Engine" src/Plugins/; then
-            echo "::error::Plugin boundary violation — a plugin references an engine/transport internal (listed above)."
-            exit 1
-          fi
-          echo "Plugin boundary clean: no engine/transport references under src/Plugins/."
+  # The plugin-boundary grep gate that used to run here is gone: no plugin source lives in this
+  # repo, so the check would pass vacuously forever. It moves to gamecapture-plugins, re-pointed at
+  # that repo's src/, where it still means something.
 
   # dotnet-template packages are the one asset `dotnet build` cannot see break: MSBuild compiles
   # the template PROJECT's own (nonexistent, IncludeBuildOutput=false) output fine even after the
@@ -139,7 +127,7 @@ jobs:
       # One project per `dotnet pack` call: despite its `[<PROJECT>...]` usage text, the CLI hands
       # every path after the first straight to one MSBuild invocation, which rejects more than one
       # project with MSB1008 "Only one project can be specified." Packed rather than built-then-
-      # `--no-build`: the template project doesn't sit in GameCapture.slnx (TASK-18 — it must never
+      # `--no-build`: the template project doesn't sit in GameCaptureEngine.slnx (it must never
       # join the main build, or its EnableDefaultItems=false untouched-content model breaks), so
       # nothing has built it yet.
       - name: Pack SDK trio + template into a scratch feed

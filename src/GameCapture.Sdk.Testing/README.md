@@ -47,4 +47,4 @@ Assert.Equal(StreamEndReason.ReplayCompleted, result.Reason);
 ```
 
 `EngineLocator.Resolve()` honours `GAMECAPTURE_ENGINE_PATH` and otherwise finds the newest local build.
-Corpus layout and capture: [`docs/REPLAY.md`](https://github.com/PetitCastor/StarCitizenTracker/blob/master/docs/REPLAY.md).
+Corpus layout and capture: [`docs/REPLAY.md`](https://github.com/PetitCastor/gamecapture-engine/blob/master/docs/REPLAY.md).

@@ -1,6 +1,6 @@
 # MyCapturePlugin
 
-A [GameCapture](https://github.com/PetitCastor/StarCitizenTracker) plugin: a console process that
+A [GameCapture](https://github.com/PetitCastor/gamecapture-engine) plugin: a console process that
 declares screen regions (ROIs) and what to do with the OCR result each time a tick carrying them
 arrives. It never captures a frame, never runs OCR, and never speaks gRPC — `GameCapturePluginHost`
 (from `GameCapture.Sdk`) owns connecting, subscribing, reconnecting, and shutdown.
@@ -11,7 +11,7 @@ arrives. It never captures a frame, never runs OCR, and never speaks gRPC — `G
 particular. Before writing any tracking logic, find your own region's real coordinates:
 
 1. Get an engine running — either a
-   [release zip](https://github.com/PetitCastor/StarCitizenTracker/releases)
+   [release zip](https://github.com/PetitCastor/gamecapture-engine/releases)
    (`GameCapture.Engine-vX.Y.Z-win-x64.zip`) or a clone of the engine repo built locally.
 2. Set `"saveDebugFrames": true` in `config.json`.
 3. Run the plugin with `--verbose` against the running engine and press the engine's capture
@@ -25,7 +25,7 @@ particular. Before writing any tracking logic, find your own region's real coord
 
 Full walkthrough — ROI kinds, scale, error handling, session events, testing, config/CLI — in the
 hosted plugin-authoring guide:
-[`docs/PLUGIN-AUTHORING.md`](https://github.com/PetitCastor/StarCitizenTracker/blob/master/docs/PLUGIN-AUTHORING.md).
+[`docs/PLUGIN-AUTHORING.md`](https://github.com/PetitCastor/gamecapture-engine/blob/master/docs/PLUGIN-AUTHORING.md).
 
 ## Build & test
 
@@ -35,7 +35,7 @@ dotnet test tests/MyCapturePlugin.Tests.csproj --filter "Category!=Integration"
 ```
 
 The one test tagged `Integration` is skipped until you have a replay corpus — see
-[`docs/REPLAY.md`](https://github.com/PetitCastor/StarCitizenTracker/blob/master/docs/REPLAY.md)
+[`docs/REPLAY.md`](https://github.com/PetitCastor/gamecapture-engine/blob/master/docs/REPLAY.md)
 and the `[Fact(Skip = ...)]` in `tests/MyCapturePluginTests.cs` for what to fill in.
 
 ## Run

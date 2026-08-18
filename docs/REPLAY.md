@@ -2,8 +2,10 @@
 
 A **corpus** is a directory of full-frame PNGs the engine can feed through its scan loop instead
 of live capture — the mechanism behind `--replay`, `ReplayFrameSource`, and every replay-parity
-test in this repo (`RefineryPlugin.Tests/ReplayParityTests.cs`, `MissionPlugin.Tests/ReplayParityTests.cs`,
-and the engine's own thin smoke in `GameCapture.Engine.Tests/ReplayHarnessTests.cs`).
+test built on `ReplayHarness`: the engine's own thin smoke here in
+`GameCapture.Engine.Tests/ReplayHarnessTests.cs`, and the plugin suites'
+`ReplayParityTests.cs` over in
+[`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins).
 
 ## Layout
 
@@ -14,11 +16,11 @@ and the engine's own thin smoke in `GameCapture.Engine.Tests/ReplayHarnessTests.
   already sort correctly this way; a hand-assembled corpus must preserve that property.
 - Frames are full captures, not cropped ROIs — the engine applies ROI geometry itself, so a
   corpus exercises the same reference-space-in/frame-space-out path production does.
-- The shared fixtures live under `tests/fixtures/corpus/<name>/` and are linked into whichever
-  test project needs them, one `<None Include="..\fixtures\corpus\<name>\**\*.png" Link="Fixtures\Replay\<name>\..." />`
-  per corpus — see `RefineryPlugin.Tests.csproj` and `MissionPlugin.Tests.csproj` for the pattern.
-  Scoped per corpus rather than a `corpus\**` catch-all, so one plugin's corpus never gets copied
-  into every other plugin's test output. The
+- Plugin corpora live in the plugins repo under `tests/fixtures/corpus/<name>/` and are linked into
+  whichever test project needs them, one `<None Include="..\fixtures\corpus\<name>\**\*.png" Link="Fixtures\Replay\<name>\..." />`
+  per corpus — see that repo's `RefineryPlugin.Tests.csproj` and `MissionPlugin.Tests.csproj` for
+  the pattern. Scoped per corpus rather than a `corpus\**` catch-all, so one plugin's corpus never
+  gets copied into every other plugin's test output. The
   engine's own `Fixtures/engine-smoke` corpus (`GameCapture.Engine.Tests`) stays local to that project —
   it is the corpus essentially the whole engine-side suite drives (scan loop, gRPC host, SDK
   client, handshake, plugin host, and the `ReplayHarness` smoke), not just the harness.

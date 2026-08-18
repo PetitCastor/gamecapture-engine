@@ -70,9 +70,9 @@ and not part of the repo history — the constraints below are restated in full 
 | `GameCapture.Engine` | `src/GameCapture.Engine/` | The only Windows-TFM project. WGC capture (`Core/MonitorCapture.cs`), OCR (`Core/OcrPipeline.cs`), pixel sampling (`Core/PixelSampler.cs`), hotkey hook (`Core/HotkeyListener.cs`), replay (`Core/ReplayFrameSource.cs`), the scan loop (`ScanLoop.cs`), subscription bookkeeping (`SubscriptionRegistry.cs`, `ClientConnection.cs`), status (`EngineStatus.cs`), and the gRPC surface (`Grpc/CaptureGrpcService.cs`, `Grpc/GrpcHost.cs`). Composed by `EngineHost.cs`, entered from `Program.cs`. |
 | `GameCapture.Sdk` | `src/GameCapture.Sdk/` | Plain `net10.0` client library. `NamedPipeChannel`/`CaptureClient`/`TrackSession` (connection + session), `RoiSubscription`/`RoiKind`/`TickData` (declaring and reading ROIs), `ProtocolNegotiation` (handshake + version errors), and the plugin-host layer under `Plugin/` — `IGameCapturePlugin`, `GameCapturePluginHost`, `TickDispatcher`, `PluginServices`. |
 | `GameCapture.Sdk.Testing` | `src/GameCapture.Sdk.Testing/` | Public testing companion package (no `InternalsVisibleTo`): `TickDataBuilder`, `FakePluginServices`, `ReplayHarness`, `EngineLocator` — spawns a real `GameCapture.Engine.exe` against a corpus and drives a plugin's real `GameCapturePluginHost` path for parity tests. |
-| `Plugins/MissionPlugin` | `src/Plugins/MissionPlugin/` | Tracks mission-board text via `IGameCapturePlugin`. |
-| `Plugins/RefineryPlugin` | `src/Plugins/RefineryPlugin/` | Tracks refinery work orders via `IGameCapturePlugin`; owns the order ledger. |
-| `tests/` | `tests/` | One test project per component above, plus `tests/fixtures/corpus/<name>/` — the shared replay corpora (`docs/REPLAY.md`). |
+| `MissionPlugin` | [`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins) | Tracks mission-board text via `IGameCapturePlugin`. Lives in the plugins repo — a pure SDK consumer, not built here. |
+| `RefineryPlugin` | [`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins) | Tracks refinery work orders via `IGameCapturePlugin`; owns the order ledger. Same repo as above. |
+| `tests/` | `tests/` | One test project per component that lives here. Plugin replay corpora live with the plugins, in the plugins repo (`docs/REPLAY.md`). |
 
 ## See also
 

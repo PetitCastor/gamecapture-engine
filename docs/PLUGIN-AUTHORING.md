@@ -25,9 +25,9 @@ and tested outside this repository against the real SDK — see [§8](#8-cold-st
   flavor (`net10.0-windows10.0.22621.0`), and a plugin must never need it — see the TFM constraint
   in [`ARCHITECTURE.md`](ARCHITECTURE.md#frozen-constraints).
 - **An engine to talk to.** Either a release zip
-  ([Releases](https://github.com/PetitCastor/StarCitizenTracker/releases) ships
+  ([Releases](https://github.com/PetitCastor/gamecapture-engine/releases) ships
   `GameCapture.Engine-vX.Y.Z-win-x64.zip`, a self-contained exe) or a clone built with
-  `dotnet build GameCapture.slnx`. Running the engine live needs Windows 10/11 with an OCR
+  `dotnet build GameCaptureEngine.slnx`. Running the engine live needs Windows 10/11 with an OCR
   language pack installed; replaying a corpus needs the same, but no game. Note where the exe lands
   — parity tests need `GAMECAPTURE_ENGINE_PATH` pointed at it ([§7](#7-testing)).
 - **A clone of this repository, or a local pack of it** until the SDK is on nuget.org (TASK-21/22).
@@ -437,7 +437,7 @@ of the engine repo. From a plugin's own repo the fallback finds nothing and `Res
 [§1](#1-prerequisites):
 
 ```powershell
-$env:GAMECAPTURE_ENGINE_PATH = "C:\tools\sctracker\GameCapture.Engine.exe"
+$env:GAMECAPTURE_ENGINE_PATH = "C:\tools\gamecapture\GameCapture.Engine.exe"
 ```
 
 CI does the same thing, pinning it to the exact artifact it downloaded or built.
@@ -571,7 +571,7 @@ dotnet new console -n MyPlugin
        repo, or a local pack — see §2. $(GameCaptureRepo) is the clone root; set it here or
        pass -p:GameCaptureRepo=... -->
   <PropertyGroup>
-    <GameCaptureRepo Condition="'$(GameCaptureRepo)' == ''">C:\src\StarCitizenTracker</GameCaptureRepo>
+    <GameCaptureRepo Condition="'$(GameCaptureRepo)' == ''">C:\src\gamecapture-engine</GameCaptureRepo>
   </PropertyGroup>
 
   <ItemGroup>
@@ -621,7 +621,7 @@ The test project — `dotnet new xunit -n MyPlugin.Tests`, then:
   </PropertyGroup>
 
   <PropertyGroup>
-    <GameCaptureRepo Condition="'$(GameCaptureRepo)' == ''">C:\src\StarCitizenTracker</GameCaptureRepo>
+    <GameCaptureRepo Condition="'$(GameCaptureRepo)' == ''">C:\src\gamecapture-engine</GameCaptureRepo>
   </PropertyGroup>
 
   <ItemGroup>

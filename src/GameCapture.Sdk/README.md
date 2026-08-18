@@ -62,5 +62,5 @@ resolution, so the constants stay valid on any monitor.
 
 ## Documentation
 
-Full tutorial: [`docs/PLUGIN-AUTHORING.md`](https://github.com/PetitCastor/StarCitizenTracker/blob/master/docs/PLUGIN-AUTHORING.md).
+Full tutorial: [`docs/PLUGIN-AUTHORING.md`](https://github.com/PetitCastor/gamecapture-engine/blob/master/docs/PLUGIN-AUTHORING.md).
 Unit and replay-parity testing: the companion package `GameCapture.Sdk.Testing`.
