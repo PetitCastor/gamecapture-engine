@@ -83,10 +83,17 @@ jobs:
         with:
           user: ${{ vars.NUGET_USER }}
 
+      # Same pwsh-doesn't-glob-native-args issue as the zip name above: "packages/*.nupkg" reaches
+      # dotnet.exe as one literal string, and its own internal glob resolution failed to match it
+      # (v1.0.0-rc.1 rehearsal: "error: File does not exist (packages/*.nupkg)" with 4 real nupkgs
+      # sitting right there). Expand the glob in pwsh instead and push each file by its resolved path.
       - name: Push packages
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-        run: dotnet nuget push "packages/*.nupkg" --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: |
+          Get-ChildItem packages\*.nupkg | ForEach-Object {
+            dotnet nuget push $_.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          }
 
       # Kept as its own push rather than relying on the main push's automatic co-located-snupkg
       # pickup, so a `.snupkg` sitting anywhere `packages/*.nupkg` doesn't literally match (a future
@@ -95,4 +102,7 @@ jobs:
       - name: Push symbol packages
         env:
           NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-        run: dotnet nuget push "packages/*.snupkg" --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: |
+          Get-ChildItem packages\*.snupkg | ForEach-Object {
+            dotnet nuget push $_.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          }
