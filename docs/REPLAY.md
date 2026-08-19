@@ -54,6 +54,40 @@ and determinism guarantees, [`docs/PROTOCOL.md`](PROTOCOL.md#backpressure-and-st
 the replay-vs-live backpressure policy, and
 [`docs/PLUGIN-AUTHORING.md`](PLUGIN-AUTHORING.md#7-testing) for writing the parity test itself.
 
+## Video sources
+
+`--video <path>` feeds an MP4 through the exact same `ScanLoop` a PNG corpus does —
+`VideoFrameSource` decodes via `MediaComposition.GetThumbnailAsync`, through the same
+`BitmapDecoder` path `ReplayFrameSource.DecodeFrameAsync` already uses for PNGs. Reach for it
+instead of a corpus when the session is long or still being iterated on: reaching a refinery
+screen after collecting ore is a grind not worth repeating for every rerun of a feature, and a
+recording is one file instead of thousands of committed PNGs. A PNG corpus stays the format for
+anything that ships in a PR — lossless, diffable, reviewable frame by frame; a video is a working
+dev-loop artifact, not a fixture.
+
+Same source class, two modes, chosen by `--video-realtime`:
+
+- **Deterministic (default)** — steps frames at a fixed interval (`--video-fps`, defaulting to
+  `1000 / scanIntervalMs` so sampling matches the live scan cadence) and returns each as fast as it
+  decodes, ending at EOF. Same shape as a PNG corpus: reproducible run to run, and the mode
+  `VideoFrameSourceTests` exercises.
+- **Interactive (`--video-realtime`)** — `NextFrameAsync` waits for each frame's presentation time
+  against a wall clock, so the engine sees the session unfold at recorded speed: the manual hotkey
+  and the metrics status bar are both live, same as against the real game. `--video-loop` restarts
+  at EOF instead of ending the run.
+
+`IFrameSource.IsReplay` is `true` in both modes — see `VideoFrameSource`'s own doc comment for why
+realtime still counts as replay — so the `Wait`-mode backpressure and manual-subscription gating
+below apply to `--video` exactly as they do to a PNG corpus.
+
+**OCR fidelity is a property of the recording, not the code.** Record at native resolution and a
+high bitrate — a 1080p capture of a 1440p session loses the thin strokes Windows OCR needs, and no
+amount of `OcrPipeline` upscaling recovers them. `MediaComposition.GetThumbnailAsync` was chosen
+over the `MediaPlayer` frame-server alternative because a spike measured its OCR output against a
+lossless `--save-frames` baseline and found it matched; that guarantee does not extend to a
+recording that was itself downscaled. Sanity-check a new recording against a `--save-frames`
+baseline of the same session before trusting it as a stand-in.
+
 ## Backpressure: replay vs. live
 
 The engine's per-client channel picks its full-mode based on whether the session is a replay

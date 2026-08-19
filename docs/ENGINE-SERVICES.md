@@ -160,7 +160,7 @@ Unary, stateless snapshot of what the engine is doing right now
 | `engine_version` | The engine's own build version (assembly informational version, falling back to the assembly version, then `"0.0.0"`). |
 | `frame_width` / `frame_height` | Last scanned frame's pixel size; both `0` until the first frame — not a 0x0 screen. |
 | `frame_seq` | The last scanned frame's sequence number. |
-| `replay_mode` | `true` when frames come from a PNG corpus rather than live WGC capture. |
+| `replay_mode` | `true` when frames come from `IFrameSource.IsReplay` rather than live WGC capture — a PNG corpus (`--replay`) and a video (`--video`, both modes) both report `true`; this field does not distinguish which (`EngineHost.cs:40`, `VideoFrameSource.cs:58`). |
 | `ocr_language` | BCP-47 tag of the recognizer actually loaded (`OcrPipeline.LanguageTag`). |
 | `connected_clients` | Names of every connection currently open on the engine, ordinal-sorted — not only ones that have subscribed. A client is listed the moment its `Track` call registers, as `"?"` until its `Hello` names it (`SubscriptionRegistry.Register`, `src/GameCapture.Engine/SubscriptionRegistry.cs:26-36`); a bare `GetStatus`/`WaitForEngineAsync` call opens no `Track` stream and does not appear. |
 | `min_supported_protocol` / `max_supported_protocol` | The `[Min, Current]` protocol-version range this engine build accepts — `GameCapture.Contracts.ProtocolVersion`; see the version-policy section of `docs/PROTOCOL.md`. |
@@ -209,6 +209,45 @@ and the determinism guarantees specifically.
 - When the corpus is exhausted, `SubscriptionRegistry.CompleteAll()` completes every client's
   `Track` stream normally — `Ticks` ends and a plugin runs its finalisers, exactly as a live
   engine shutdown does (`ScanLoop.cs:190-195`, `SubscriptionRegistry.cs:59-68`).
+
+## Video mode
+
+`--video <path>` feeds an MP4 through the same `ScanLoop` replay mode uses, via
+`VideoFrameSource` (`src/GameCapture.Engine/Core/VideoFrameSource.cs`; wired in
+`Program.cs:56-73,103,122-153`) instead of `ReplayFrameSource`. Full when-to-use-it guidance and
+the OCR-fidelity caveat live in [`docs/REPLAY.md`](REPLAY.md#video-sources); this section covers
+the flags and how it differs from a PNG corpus.
+
+**Flags**:
+
+- `--video <path>`: the file must exist (checked at startup, `Program.cs:56-61`). Mutually
+  exclusive with `--replay` (`Program.cs:63-67`) and `--save-frames` (`Program.cs:69-73`) — one
+  frame source per run, and a video's frames are already on disk in the source file.
+- `--video-fps <n>`: sampling interval along the video's own timeline. Defaults to
+  `1000 / ScanIntervalMs` so the default sampling rate matches the live scan cadence
+  (`Program.cs:124`); rejects non-positive values and any value above the video's own native frame
+  rate, when that rate is known (`Program.cs:84-98,142-148`; `VideoFrameSource.NativeFrameRate`,
+  `VideoFrameSource.cs:38-42`, is `0` — "unknown, skip the check" — when the container has no
+  `System.Video.FrameRate` shell property, `VideoFrameSource.cs:119-130`).
+- `--video-realtime` / `--video-loop` without `--video` is an error, not a silent no-op
+  (`Program.cs:78-82`).
+
+**Deterministic vs. realtime**: both modes are the same `VideoFrameSource`, differing only in
+whether `NextFrameAsync` paces itself against a wall clock (`VideoFrameSource.cs:60-95`). This
+governs the hotkey and metrics gating below: `Program.cs`'s `livePaced` predicate
+(`Program.cs:103`) is `true` for live capture and `--video-realtime`, `false` for `--replay` and
+plain `--video` — replacing the old `replayDir is null` check that gated the hotkey listener and
+metrics reporter (`Program.cs:219,242-244,251-252`).
+
+**`IsReplay` is `true` in both modes**, including realtime — `VideoFrameSource.cs:58`, doc comment
+at `VideoFrameSource.cs:16-19`. A video is a finite source whose `null` return means end of stream,
+never "screen went idle," which is exactly what a PNG corpus means by `IsReplay` too. Consequence:
+`--video-realtime` still gets the `Wait`-mode backpressure and the wait-for-subscriber gating this
+document's Track section describes for replay, not the live `DropOldest` policy — the wall-clock
+pacing lives inside `NextFrameAsync` itself (`VideoFrameSource.cs:88-95`), not in `ScanLoop`'s
+inter-tick delay, so `ScanLoop` treats a realtime video exactly like a batch replay run with a slow
+frame source. See the `replay_mode` row in the `GetStatus` table above: it cannot tell a video run
+from a PNG corpus run either.
 
 ## `--save-frames`: corpus capture
 

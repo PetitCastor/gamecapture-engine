@@ -136,10 +136,17 @@ Engine flags:
 | `--monitor <index>` | Overrides which monitor is captured. |
 | `--ocr-lang <bcp47>` | Overrides the configured OCR language. |
 | `--replay <dir>` | Processes saved PNG frames instead of live monitor capture. |
+| `--video <path>` | Processes an MP4 instead of live monitor capture. |
+| `--video-fps <n>` | Sampling rate for `--video` (default: the configured scan cadence). |
+| `--video-realtime` | Paces `--video` playback to recorded speed, with the hotkey and metrics status bar live. |
+| `--video-loop` | Restarts `--video` at EOF instead of ending the run. |
 | `--save-frames` | Saves a full PNG frame whenever the configured manual hotkey is pressed. |
 | `--verbose` | Per-ROI logging on every scan. |
 
-`--replay` is for deterministic corpus runs and cannot be combined with `--save-frames`.
+`--replay` is for deterministic corpus runs and cannot be combined with `--save-frames`. `--video`
+is a third, mutually exclusive frame source — it cannot be combined with `--replay` or
+`--save-frames` either; `--video-realtime` and `--video-loop` are errors without `--video`. See
+[`docs/REPLAY.md`](docs/REPLAY.md#video-sources) for when to reach for `--video` over a PNG corpus.
 
 ## Documentation
 
