@@ -138,11 +138,23 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
             // Hello would be stranded behind a response read that can never produce another item.
             while (true)
             {
-                if (pump.IsFaulted && !await ObservePumpAsync(pump))
-                    return;
-
                 var read = client.Out.Reader.WaitToReadAsync(ctx.CancellationToken).AsTask();
-                if (!pump.IsCompleted)
+
+                // Every completed pump is observed here, and the state is read ONCE, after `read`
+                // exists. An earlier check plus a second `if (!pump.IsCompleted)` guard around the
+                // race left a window the width of those two statements: a pump that faulted inside
+                // it was seen as not-yet-faulted by the first check and as already-completed by the
+                // second, which skipped the race and parked this loop on a channel no tick was
+                // coming to. That is the unsupported-Hello path (the lambda's finally settles the
+                // handshake before the task turns Faulted, so TryWriteHelloAckAsync returns without
+                // writing an ack), and the refusal never reached the client — it waited out its
+                // connect timeout instead. Intermittent, roughly one run in three.
+                if (pump.IsCompleted)
+                {
+                    if (!await ObservePumpAsync(pump))
+                        return;
+                }
+                else
                 {
                     var completed = await Task.WhenAny(read, pump);
                     if (completed == pump && !await ObservePumpAsync(pump))
@@ -256,9 +268,14 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
     private static async Task<bool> TryWriteHelloAckAsync(
         Task<HelloAck?> handshake, Task pump, IServerStreamWriter<TrackResponse> responseStream)
     {
-        // Racing the pump matters as much as awaiting the handshake: an unsupported version faults
-        // the pump without ever settling the handshake, and waiting on it alone would hang the call
-        // instead of delivering the rejection the client is waiting for.
+        // Racing the pump rather than awaiting the handshake alone: a pump that dies before it ever
+        // reads a Hello (a torn connection, a client that hangs up mid-frame) would otherwise leave
+        // this waiting on a handshake nobody is going to complete.
+        //
+        // Note what this does NOT catch: an unsupported version settles the handshake too. The
+        // lambda's finally runs TrySetResult(null) as the RpcException propagates, so `handshake`
+        // wins this race, `ack` is null, and we return true having written nothing. Ending the call
+        // with the rejection is the drain loop's job, via ObservePumpAsync.
         if (await Task.WhenAny(handshake, pump) == pump && !await ObservePumpAsync(pump))
             return false;
 
