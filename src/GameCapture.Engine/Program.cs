@@ -11,6 +11,8 @@ var config = EngineConfig.Load(Path.Combine(AppContext.BaseDirectory, "engine-co
 
 // CLI: --pipe <name>, --ocr-lang <bcp47>, --monitor <index> (each overrides config),
 //      --replay <dir> (feed saved PNGs through the engine instead of live capture),
+//      --video <path> (feed an MP4 through the engine instead of live capture; TASK-25),
+//      --video-fps <n>, --video-realtime, --video-loop (video-only pacing knobs),
 //      --save-frames (save full-frame PNG on manual trigger), --verbose
 var verbose = args.Contains("--verbose", StringComparer.OrdinalIgnoreCase);
 var saveFrames = args.Contains("--save-frames", StringComparer.OrdinalIgnoreCase);
@@ -51,6 +53,55 @@ if (saveFrames && replayDir is not null)
     return 1;
 }
 
+var videoPath = ArgValue("--video");
+if (videoPath is not null && !File.Exists(videoPath))
+{
+    Console.Error.WriteLine($"Video file not found: {videoPath}");
+    return 1;
+}
+
+if (videoPath is not null && replayDir is not null)
+{
+    Console.Error.WriteLine("--video cannot be combined with --replay.");
+    return 1;
+}
+
+if (saveFrames && videoPath is not null)
+{
+    Console.Error.WriteLine("--save-frames cannot be combined with --video.");
+    return 1;
+}
+
+var videoRealtime = args.Contains("--video-realtime", StringComparer.OrdinalIgnoreCase);
+var videoLoop = args.Contains("--video-loop", StringComparer.OrdinalIgnoreCase);
+
+if (videoPath is null && (videoRealtime || videoLoop))
+{
+    Console.Error.WriteLine("--video-realtime and --video-loop require --video.");
+    return 1;
+}
+
+double? videoFps = null;
+if (ArgValue("--video-fps") is { } videoFpsArg)
+{
+    if (!double.TryParse(videoFpsArg, out var parsedFps) || parsedFps <= 0)
+    {
+        Console.Error.WriteLine($"--video-fps expects a positive number, got '{videoFpsArg}'.");
+        return 1;
+    }
+    if (videoPath is null)
+    {
+        Console.Error.WriteLine("--video-fps requires --video.");
+        return 1;
+    }
+    videoFps = parsedFps;
+}
+
+// Live and --video-realtime both unfold at their own pace, so the hotkey and metrics status bar
+// mean something for them; --replay and plain --video are batch drains with no "now" to trigger
+// against.
+var livePaced = replayDir is null && (videoPath is null || videoRealtime);
+
 // Missing/unsupported pack is user setup, not a bug: fail with the fix instructions, no stack trace.
 OcrPipeline ocr;
 try
@@ -68,7 +119,39 @@ catch (InvalidOperationException ex)
 IFrameSource source;
 string captureLine;
 
-if (replayDir is not null)
+if (videoPath is not null)
+{
+    var effectiveFps = videoFps ?? 1000.0 / config.ScanIntervalMs;
+
+    VideoFrameSource video;
+    try
+    {
+        video = new VideoFrameSource(videoPath, new VideoFrameSourceOptions
+        {
+            FrameInterval = TimeSpan.FromSeconds(1.0 / effectiveFps),
+            Realtime = videoRealtime,
+            Loop = videoLoop,
+        });
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to open video '{videoPath}': {ex.Message}");
+        return 1;
+    }
+
+    if (video.NativeFrameRate > 0 && effectiveFps > video.NativeFrameRate)
+    {
+        video.Dispose();
+        Console.Error.WriteLine(
+            $"--video-fps {effectiveFps:0.###} exceeds the video's native frame rate ({video.NativeFrameRate:0.###} fps).");
+        return 1;
+    }
+
+    source = video;
+    captureLine = $"Video:     {videoPath} {video.Width}x{video.Height}, {video.Duration:mm\\:ss\\.fff}, " +
+        $"{effectiveFps:0.###} fps [{(videoRealtime ? "realtime" : "deterministic")}{(videoLoop ? ", loop" : "")}]";
+}
+else if (replayDir is not null)
 {
     var replay = new ReplayFrameSource(replayDir);
     source = replay;
@@ -133,7 +216,7 @@ Console.CancelKeyPress += (_, e) =>
 HotkeyListener? hotkey = null;
 MetricsReporter? metrics = null;
 
-if (replayDir is null)
+if (livePaced)
 {
     var (modifiers, virtualKey) = HotkeyListener.ParseHotkey(config.Hotkey);
     Action onHotkey;
@@ -156,16 +239,16 @@ if (replayDir is null)
 }
 
 sink.WriteLine();
-sink.WriteLine(replayDir is null
+sink.WriteLine(livePaced
     ? "Scanning. Ctrl+C to quit."
-    : "Waiting for a plugin to subscribe before replaying the corpus. Ctrl+C to quit.");
+    : "Waiting for a plugin to subscribe before replaying. Ctrl+C to quit.");
 sink.WriteLine();
 
 try
 {
     // Created after the banner so it disposes before the sink: the timer is fully stopped
     // (in-flight tick drained) before the sink erases the status line on shutdown.
-    if (replayDir is null && config.MetricsEnabled)
+    if (livePaced && config.MetricsEnabled)
         metrics = new MetricsReporter(sink, TimeSpan.FromMilliseconds(config.MetricsIntervalMs));
 
     await engine.RunScanAsync(cts.Token);

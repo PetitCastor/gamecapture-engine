@@ -44,6 +44,7 @@
        resolve at run time. -->
   <ItemGroup>
     <None Include="Fixtures\**\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\video-frame-source\**\*.mp4" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
