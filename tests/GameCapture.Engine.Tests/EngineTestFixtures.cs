@@ -14,6 +14,14 @@ internal static class EngineTestFixtures
     /// <summary>Three frames copied from the monolith's refinery-confirm replay corpus.</summary>
     public const string ReplayDir = "Fixtures/engine-smoke";
 
+    /// <summary>
+    /// Synthetic 320x180, 3.0s/30fps MP4 for VideoFrameSourceTests: every frame is a keyframe (so
+    /// <c>GetThumbnailAsync</c> lands on real content at arbitrary timestamps, not stale P-frame
+    /// data) and carries a burned-in timestamp so frames sampled at different points are visually
+    /// distinct rather than a black rectangle repeated 90 times.
+    /// </summary>
+    public const string VideoPath = "Fixtures/video-frame-source/sample.mp4";
+
     /// <summary>The refinery panel-state ROI: SETUP | PROCESSING | COMPLETED.</summary>
     public static RoiSpec PanelStateRoi(string id = "panel") => new()
     {
