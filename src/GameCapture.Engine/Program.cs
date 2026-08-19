@@ -1,3 +1,4 @@
+using System.Globalization;
 using GameCapture.Engine;
 using GameCapture.Engine.Metrics;
 
@@ -84,7 +85,11 @@ if (videoPath is null && (videoRealtime || videoLoop))
 double? videoFps = null;
 if (ArgValue("--video-fps") is { } videoFpsArg)
 {
-    if (!double.TryParse(videoFpsArg, out var parsedFps) || parsedFps <= 0)
+    // Invariant, not the current culture: a CLI number is a machine-facing token, and the SDK test
+    // harness (ReplayHarness, TASK-26) formats it invariantly. Parsing it against the process culture
+    // would read "2.5" as 25 on a comma-decimal machine (de-DE) or reject it outright (fr-FR).
+    if (!double.TryParse(videoFpsArg, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedFps)
+        || !double.IsFinite(parsedFps) || parsedFps <= 0)
     {
         Console.Error.WriteLine($"--video-fps expects a positive number, got '{videoFpsArg}'.");
         return 1;

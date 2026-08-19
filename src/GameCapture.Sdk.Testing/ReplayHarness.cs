@@ -34,6 +34,14 @@ public static class ReplayHarness
                 $"(CorpusDir={(hasCorpus ? "set" : "unset")}, VideoPath={(hasVideo ? "set" : "unset")}).",
                 nameof(o));
 
+        // Catch a bad fps here rather than let the engine reject it and exit before opening the pipe,
+        // which the plugin host would only surface as an opaque 5-minute TimeoutException. NaN slips
+        // past a plain `<= 0` (every NaN comparison is false), so test finiteness explicitly.
+        if (o.VideoFps is { } fps && (!double.IsFinite(fps) || fps <= 0))
+            throw new ArgumentException(
+                $"ReplayOptions.VideoFps must be a positive, finite number (got {fps.ToString(CultureInfo.InvariantCulture)}).",
+                nameof(o));
+
         var pipe = $"gamecapture-test-{Guid.NewGuid():N}";
         var outputTail = new OutputTail();
 

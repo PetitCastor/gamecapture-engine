@@ -45,4 +45,36 @@ public class ReplayHarnessVideoTests(ITestOutputHelper output)
         // video never reached the scan loop (the failure this test exists to catch).
         Assert.True(plugin.TickCount > 0, "expected at least one tick decoded from the video");
     }
+
+    [Fact]
+    public async Task SmokeVideo_WithFractionalFps_RoundTripsThroughTheEngineCli()
+    {
+        var enginePath = EngineLocator.Resolve();
+        var plugin = new NullPlugin();
+
+        // 2.5 fps over the 3.0s/30fps fixture is fractional (so it exercises a non-integer fps all
+        // the way through BuildEngineArgs → CLI → the engine's double.TryParse, not just the integer
+        // path) and well under the clip's native rate (so the engine's above-native-fps guard doesn't
+        // reject it). It can't reproduce the comma-decimal-culture misparse the TASK-26 review flagged
+        // — the child engine process runs under the OS culture regardless of this test's thread — so
+        // that fix lives in Program.cs parsing invariantly, not in an assertion here.
+        var result = await ReplayHarness.RunAsync(new ReplayOptions
+        {
+            EnginePath = enginePath,
+            VideoPath = ReplayCorpus.Resolve(EngineTestFixtures.VideoPath),
+            VideoFps = 2.5,
+            Plugin = plugin,
+            Timeout = TestTimeout,
+        });
+
+        output.WriteLine($"{plugin.TickCount} tick(s) dispatched at 2.5 fps, exit {result.ExitCode}, " +
+            $"reason {result.Reason}");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(StreamEndReason.ReplayCompleted, result.Reason);
+
+        // An fps that never reached the engine (dropped arg, rejected value) would make it exit
+        // before the pipe opened, timing the run out rather than reaching here with ticks.
+        Assert.True(plugin.TickCount > 0, "expected ticks decoded at the requested fps");
+    }
 }

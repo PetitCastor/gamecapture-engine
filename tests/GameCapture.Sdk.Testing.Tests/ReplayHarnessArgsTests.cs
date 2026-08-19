@@ -74,6 +74,21 @@ public class ReplayHarnessArgsTests
         Assert.Contains("exactly one", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public async Task RunAsync_BadVideoFps_ThrowsBeforeSpawning(double fps)
+    {
+        // Eager guard rather than letting the engine reject the value and exit before the pipe opens,
+        // which the plugin host would only surface as an opaque Timeout after minutes.
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => ReplayHarness.RunAsync(Options(video: @"C:\clips\run.mp4", fps: fps)));
+
+        Assert.Contains("VideoFps", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>Minimal <see cref="IGameCapturePlugin"/>: the arg/guard tests never reach a tick, so
     /// only the two non-defaulted members need a body.</summary>
     private sealed class StubPlugin : IGameCapturePlugin
