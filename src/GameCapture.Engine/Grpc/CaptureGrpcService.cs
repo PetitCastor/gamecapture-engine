@@ -136,6 +136,11 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
             // is shutting down. A client disconnecting instead surfaces as a cancellation. A
             // failed request pump must end the call immediately too: otherwise an unsupported
             // Hello would be stranded behind a response read that can never produce another item.
+            //
+            // Latches once the pump has been observed to end cleanly, so a long-lived call does
+            // not keep re-awaiting an already-completed task on every tick — see the loop below.
+            var pumpObservedClean = false;
+
             while (true)
             {
                 var read = client.Out.Reader.WaitToReadAsync(ctx.CancellationToken).AsTask();
@@ -149,16 +154,42 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
                 // handshake before the task turns Faulted, so TryWriteHelloAckAsync returns without
                 // writing an ack), and the refusal never reached the client — it waited out its
                 // connect timeout instead. Intermittent, roughly one run in three.
-                if (pump.IsCompleted)
+                //
+                // Once a clean end has been observed, `pumpObservedClean` skips this check on every
+                // later iteration: the pump can never un-complete, so there is nothing left here to
+                // race or re-observe. Only a successful observation sets the latch — a cancellation
+                // or a genuine fault still takes its `return` below, every time it recurs.
+                if (!pumpObservedClean)
                 {
-                    if (!await ObservePumpAsync(pump))
-                        return;
-                }
-                else
-                {
-                    var completed = await Task.WhenAny(read, pump);
-                    if (completed == pump && !await ObservePumpAsync(pump))
-                        return;
+                    if (pump.IsCompleted)
+                    {
+                        if (!await ObservePumpAsync(pump))
+                        {
+                            // `read` was created above and is still pending (or, having just been
+                            // created, may complete on its own in a moment); either way nothing
+                            // will ever await it now. Observe it in place rather than block on it,
+                            // so a cancellation landing after we are gone does not surface as an
+                            // unobserved task exception.
+                            ObserveAbandonedRead(read);
+                            return;
+                        }
+
+                        pumpObservedClean = true;
+                    }
+                    else
+                    {
+                        var completed = await Task.WhenAny(read, pump);
+                        if (completed == pump)
+                        {
+                            if (!await ObservePumpAsync(pump))
+                            {
+                                ObserveAbandonedRead(read);
+                                return;
+                            }
+
+                            pumpObservedClean = true;
+                        }
+                    }
                 }
 
                 if (!await read)
@@ -306,6 +337,18 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
             return false;
         }
     }
+
+    /// <summary>
+    /// Marks the exception on a channel-read task the drain loop is walking away from as observed,
+    /// without awaiting or blocking on it. The loop abandons `read` whenever it returns from the
+    /// pump-observation branch instead of falling through to <c>await read</c>; if <paramref
+    /// name="read"/> is still pending at that point and <c>ctx.CancellationToken</c> then fires, it
+    /// completes with an <see cref="OperationCanceledException"/> nobody is left to await — which
+    /// the .NET finalizer would otherwise report as an unobserved task exception.
+    /// </summary>
+    private static void ObserveAbandonedRead(Task<bool> read)
+        => _ = read.ContinueWith(static t => _ = t.Exception,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
 
     /// <summary>
     /// Cancellation reaches us either as the token's own exception or, when gRPC has already
