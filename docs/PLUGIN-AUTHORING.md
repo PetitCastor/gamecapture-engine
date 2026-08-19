@@ -30,10 +30,11 @@ and tested outside this repository against the real SDK — see [§8](#8-cold-st
   `dotnet build GameCaptureEngine.slnx`. Running the engine live needs Windows 10/11 with an OCR
   language pack installed; replaying a corpus needs the same, but no game. Note where the exe lands
   — parity tests need `GAMECAPTURE_ENGINE_PATH` pointed at it ([§7](#7-testing)).
-- **A clone of this repository, or a local pack of it** until the SDK is on nuget.org (TASK-21/22).
-  The template ([§2](#2-creating-the-project)) references `GameCapture.Sdk`, `GameCapture.Contracts`,
-  and `GameCapture.Sdk.Testing` by package ID already — a local feed (or, later, nuget.org) supplies
-  them either way.
+- **The packages, from nuget.org.** `GameCapture.Sdk`, `GameCapture.Contracts`, and
+  `GameCapture.Sdk.Testing` restore like any other dependency; the template
+  ([§2](#2-creating-the-project)) already references all three by package ID. No clone of this
+  repository is involved in writing a plugin — clone it only to work on the engine itself, or to
+  test against an unreleased SDK ([§2](#2-creating-the-project)).
 
 Writing and unit-testing a plugin needs none of the above beyond the SDK — no Windows OCR, no game,
 no engine process. That is the point of the plain-`net10.0` boundary.
@@ -41,7 +42,6 @@ no engine process. That is the point of the plain-`net10.0` boundary.
 ## 2. Creating the project
 
 ```powershell
-# once GameCapture.Plugin.Template has a stable release on nuget.org (TASK-21/22):
 dotnet new install GameCapture.Plugin.Template
 dotnet new gamecapture-plugin -n MyPlugin
 ```
@@ -52,10 +52,10 @@ class to rename and fill in — [§3](#3-anatomy-of-a-plugin) picks up from here
 `dotnet new gamecapture-plugin -h` lists every symbol, including `--SdkVersion` for pinning a
 specific `GameCapture.Sdk`/`.Contracts`/`.Sdk.Testing` version.
 
-Until then, install and instantiate from a local feed instead — pack the four projects, add the feed
-as a source scoped to the new project (not the machine-wide config `dotnet nuget add source` mutates
-without `--configfile`), and pin the instantiated project at that exact prerelease with
-`--SdkVersion`:
+**Testing against an unreleased SDK** (an engine change not yet published) is the one case that
+needs a clone: pack the four projects into a local feed, add that feed as a source scoped to the new
+project (not the machine-wide config `dotnet nuget add source` mutates without `--configfile`), and
+pin the instantiated project at the packed prerelease with `--SdkVersion`:
 
 ```powershell
 dotnet pack src/GameCapture.Contracts -c Release -o feed
@@ -74,7 +74,7 @@ dotnet nuget add source <full path to feed> --name local --configfile MyPlugin/n
 guard for the template itself: instantiate, build, test); read it for the working detail, including
 the `GameCapture.Sdk.Testing` name collision to filter out of the `GameCapture.Sdk.*.nupkg` glob.
 
-Setting the project up by hand — no template package available — is
+Setting the same project up by hand, without the template, is
 [Appendix: manual project setup](#appendix-manual-project-setup).
 
 ## 3. Anatomy of a plugin
@@ -469,7 +469,7 @@ Verified against a project built outside this repository:
 
 ```powershell
 dotnet new gamecapture-plugin -n MyPlugin   # §2 — then rename/fill in MyPlugin.cs per §3
-dotnet build MyPlugin -c Release            # SDK + contracts restore from the (local or nuget.org) feed
+dotnet build MyPlugin -c Release            # SDK + contracts restore from nuget.org
 
 # Unit tests only. The parity test from §7 spawns a real engine, so it is filtered out
 # here — run it once GAMECAPTURE_ENGINE_PATH and a corpus are in place.
@@ -567,16 +567,11 @@ dotnet new console -n MyPlugin
     <RootNamespace>MyPlugin</RootNamespace>
   </PropertyGroup>
 
-  <!-- Until the SDK is on nuget.org (TASK-21/22), reference it out of a clone of the engine
-       repo, or a local pack — see §2. $(GameCaptureRepo) is the clone root; set it here or
-       pass -p:GameCaptureRepo=... -->
-  <PropertyGroup>
-    <GameCaptureRepo Condition="'$(GameCaptureRepo)' == ''">C:\src\gamecapture-engine</GameCaptureRepo>
-  </PropertyGroup>
-
+  <!-- One version train: Sdk, Contracts and Sdk.Testing always move together, so pin all
+       three to the same version — see COMPATIBILITY.md. -->
   <ItemGroup>
-    <ProjectReference Include="$(GameCaptureRepo)\src\GameCapture.Sdk\GameCapture.Sdk.csproj" />
-    <ProjectReference Include="$(GameCaptureRepo)\src\GameCapture.Contracts\GameCapture.Contracts.csproj" />
+    <PackageReference Include="GameCapture.Sdk" Version="1.*" />
+    <PackageReference Include="GameCapture.Contracts" Version="1.*" />
   </ItemGroup>
 
   <ItemGroup>
@@ -620,10 +615,6 @@ The test project — `dotnet new xunit -n MyPlugin.Tests`, then:
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <GameCaptureRepo Condition="'$(GameCaptureRepo)' == ''">C:\src\gamecapture-engine</GameCaptureRepo>
-  </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
@@ -635,9 +626,8 @@ The test project — `dotnet new xunit -n MyPlugin.Tests`, then:
 
   <ItemGroup>
     <ProjectReference Include="..\MyPlugin\MyPlugin.csproj" />
-    <!-- TickDataBuilder, FakePluginServices, ReplayHarness. Becomes a PackageReference on
-         GameCapture.Sdk.Testing once the packages ship (TASK-21/22). -->
-    <ProjectReference Include="$(GameCaptureRepo)\src\GameCapture.Sdk.Testing\GameCapture.Sdk.Testing.csproj" />
+    <!-- TickDataBuilder, FakePluginServices, ReplayHarness — same version as the SDK above. -->
+    <PackageReference Include="GameCapture.Sdk.Testing" Version="1.*" />
   </ItemGroup>
 
 </Project>

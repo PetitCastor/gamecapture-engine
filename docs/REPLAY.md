@@ -29,7 +29,7 @@ test built on `ReplayHarness`: the engine's own thin smoke here in
 
 1. Run the engine against the live game with `--save-frames`:
    `dotnet run --project src\GameCapture.Engine -- --save-frames`
-2. Press the configured hotkey (`engine-config.json`'s `Hotkey`, logged on startup) at each stage
+2. Press the configured hotkey (`engine-config.json`'s `hotkey`, logged on startup) at each stage
    worth a frame — e.g. for a refinery order: SETUP open, after each scroll, on a REFINE toggle,
    post-CONFIRM, and (for a parity corpus that needs it) one CANCEL. Each press saves one
    full-frame PNG under the configured dump directory.

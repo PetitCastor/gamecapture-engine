@@ -53,15 +53,64 @@ set. See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
 
 ## Writing a plugin
 
+A plugin is a plain `net10.0` console process: it declares the screen regions it wants and what to do
+with each tick of readings. It never captures, never runs OCR, and never speaks gRPC —
+`GameCapturePluginHost` owns connecting, subscribing, reconnecting, cancellation, and the end-of-run
+summary. You do not clone or build this repo to write one; you need the .NET 10 SDK and an engine
+binary to talk to.
+
+**1. Scaffold the project.**
+
 ```powershell
 dotnet new install GameCapture.Plugin.Template
 dotnet new gamecapture-plugin -n MyPlugin
 ```
 
-A plugin implements `IGameCapturePlugin` — a name, a set of regions, and what to do with a tick — and
-hands it to `GameCapturePluginHost.RunAsync`, which owns connecting, subscribing, reconnecting,
-cancellation, and the end-of-run summary. Three members is a working tracker; the full tutorial is
-[`docs/PLUGIN-AUTHORING.md`](docs/PLUGIN-AUTHORING.md).
+That writes the whole thing: `MyPlugin.csproj` (a `PackageReference` on `GameCapture.Sdk` and
+`GameCapture.Contracts`), `Program.cs` (one line — hand the plugin to the host), `Rois.cs`,
+`MyPlugin.cs` with one placeholder region, `config.json`, a test project wired against
+`GameCapture.Sdk.Testing`, and a CI workflow stub. `--SdkVersion` pins the package version
+(default `1.*`).
+
+**2. Get an engine to talk to.** Either download `GameCapture.Engine-vX.Y.Z-win-x64.zip` from
+[Releases](https://github.com/PetitCastor/gamecapture-engine/releases) and run the self-contained
+exe, or run one from a clone (`dotnet run --project src/GameCapture.Engine`). Live capture needs
+Windows 10/11 with an OCR language pack. Both sides must agree on the pipe name — `pipeName` in the
+plugin's `config.json`, the engine's `engine-config.json`, or `--pipe <name>` passed to both.
+
+**3. Fill in the plugin.** `IGameCapturePlugin` has three required members:
+
+| Member | What it is |
+| --- | --- |
+| `Name` | Client name on the Track stream, and the tag on every record emitted. |
+| `Rois` | The regions to subscribe, declared in reference space (2560x1440) — the engine scales them to whatever resolution is actually captured. Fixed for the life of the process. |
+| `OnTickAsync` | One frame's worth of readings: `ctx.Tick.TryGetText(id, out var text)`, then `ctx.Services.Emit(new CaptureRecord(...))`. Calls never overlap, so plugin state needs no locking. |
+
+Four more have working defaults: `ErrorPolicy`, `OnManualTickAsync`, `OnSessionEvent`,
+`SummaryLines`.
+
+**4. Calibrate the regions.** The placeholder rectangle points at nothing in particular, so before
+writing tracking logic: set `"saveDebugFrames": true` in `config.json`, run engine and plugin with
+`--verbose`, press the engine's hotkey (default `Ctrl+Shift+F12`) on the screen you care about, and
+compare the dumped PNG against your `RoiRect(x, y, width, height)`. Nudge the rect and `Scale` until
+the crop lands on your text — small UI text usually needs `Scale` 2-4.
+
+**5. Run and test it.**
+
+```powershell
+dotnet run --project src/GameCapture.Engine    # terminal 1 — or the release exe
+dotnet run --project MyPlugin -- --verbose     # terminal 2
+
+dotnet test MyPlugin/tests/MyPlugin.Tests.csproj --filter "Category!=Integration"
+```
+
+Unit tests need no engine, no OCR, and no game — `TickDataBuilder` and `FakePluginServices` feed the
+plugin synthetic ticks. The `Integration` filter excludes the replay-parity test, which spawns a
+real engine over a saved PNG corpus; fill that in once you have a corpus
+([`docs/REPLAY.md`](docs/REPLAY.md)).
+
+The full tutorial — ROI kinds, scale and calibration, error policy, session events, testing,
+config and CLI — is [`docs/PLUGIN-AUTHORING.md`](docs/PLUGIN-AUTHORING.md).
 
 ## Working on the engine
 
