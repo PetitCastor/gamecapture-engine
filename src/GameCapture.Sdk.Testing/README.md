@@ -48,3 +48,24 @@ Assert.Equal(StreamEndReason.ReplayCompleted, result.Reason);
 
 `EngineLocator.Resolve()` honours `GAMECAPTURE_ENGINE_PATH` and otherwise finds the newest local build.
 Corpus layout and capture: [`docs/REPLAY.md`](https://github.com/PetitCastor/gamecapture-engine/blob/master/docs/REPLAY.md).
+
+### Parity test against a video
+
+Set `VideoPath` instead of `CorpusDir` to drive the same run from an MP4 (`--video`, TASK-25) — one
+file standing in for a long session that would be thousands of PNGs. Set exactly one of the two;
+`RunAsync` throws if both or neither is set.
+
+```csharp
+var result = await ReplayHarness.RunAsync(new ReplayOptions
+{
+    EnginePath = EngineLocator.Resolve(),
+    VideoPath = ReplayCorpus.Resolve("Fixtures/Replay/my-clip/session.mp4"),
+    VideoFps = 2,   // optional; null leaves the engine on its own 1000/ScanIntervalMs default
+    Plugin = new CounterPlugin(),
+});
+
+Assert.Equal(StreamEndReason.ReplayCompleted, result.Reason);
+```
+
+The harness only ever drives the deterministic drain — it never asks for `--video-realtime` or
+`--video-loop`, which exist for interactive dev against a live engine, not an automated assertion.
