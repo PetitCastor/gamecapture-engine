@@ -47,7 +47,9 @@ see `Program.cs`'s check) — a corpus is captured live, then replayed offline a
   with `--replay <dir> --pipe <generated>`, drives a plugin against it through the plugin's real
   `GameCapturePluginHost` path, and returns every emitted record plus how the run ended
   (`StreamEndReason`, exit code). This is what a plugin's own CI uses for parity, and what every
-  replay-parity test in this repo is built on now (TASK-13).
+  replay-parity test in this repo is built on now (TASK-13). Set `ReplayOptions.VideoPath` (with an
+  optional `VideoFps`) instead of `CorpusDir` to drive the same run from an MP4 — see
+  [Video sources](#video-sources) — exactly one of the two must be set (TASK-26).
 
 See [`docs/ENGINE-SERVICES.md`](ENGINE-SERVICES.md#replay-mode) for the engine's replay-mode flags
 and determinism guarantees, [`docs/PROTOCOL.md`](PROTOCOL.md#backpressure-and-stream-end) for
@@ -79,6 +81,12 @@ Same source class, two modes, chosen by `--video-realtime`:
 `IFrameSource.IsReplay` is `true` in both modes — see `VideoFrameSource`'s own doc comment for why
 realtime still counts as replay — so the `Wait`-mode backpressure and manual-subscription gating
 below apply to `--video` exactly as they do to a PNG corpus.
+
+The SDK test harness reaches the deterministic mode through `ReplayOptions.VideoPath` /
+`VideoFps` (TASK-26): a parity test can point at a recording instead of a corpus with no other
+change, and gets the same `StreamEndReason.ReplayCompleted` at EOF. The harness deliberately never
+sets `--video-realtime`/`--video-loop` — those are interactive dev-loop knobs, not deterministic
+assertions.
 
 **OCR fidelity is a property of the recording, not the code.** Record at native resolution and a
 high bitrate — a 1080p capture of a 1440p session loses the thin strokes Windows OCR needs, and no

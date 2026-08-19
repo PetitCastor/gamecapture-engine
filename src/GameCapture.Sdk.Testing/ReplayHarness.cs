@@ -1,12 +1,16 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("GameCapture.Sdk.Testing.Tests")]
 
 namespace GameCapture.Sdk.Testing;
 
 /// <summary>
-/// Runs a plugin against a real, spawned <c>GameCapture.Engine.exe</c> replaying a PNG corpus — the exact
-/// mechanism a plugin's own CI uses for parity: public SDK plus an engine binary, no in-proc
-/// shortcuts and no <c>InternalsVisibleTo</c> reaching across the engine/plugin boundary.
+/// Runs a plugin against a real, spawned <c>GameCapture.Engine.exe</c> replaying a PNG corpus or an
+/// MP4 — the exact mechanism a plugin's own CI uses for parity: public SDK plus an engine binary,
+/// no in-proc shortcuts and no <c>InternalsVisibleTo</c> reaching across the engine/plugin boundary.
 /// </summary>
 public static class ReplayHarness
 {
@@ -19,20 +23,42 @@ public static class ReplayHarness
     {
         ArgumentNullException.ThrowIfNull(o);
 
+        // Exactly one source, same shape as Program.cs's --replay/--video mutual exclusion. This is
+        // the runtime replacement for the compile-time `required` that CorpusDir used to carry:
+        // both set is contradictory, neither set is the forgotten-source mistake.
+        var hasCorpus = !string.IsNullOrEmpty(o.CorpusDir);
+        var hasVideo = !string.IsNullOrEmpty(o.VideoPath);
+        if (hasCorpus == hasVideo)
+            throw new ArgumentException(
+                "Set exactly one of ReplayOptions.CorpusDir or ReplayOptions.VideoPath " +
+                $"(CorpusDir={(hasCorpus ? "set" : "unset")}, VideoPath={(hasVideo ? "set" : "unset")}).",
+                nameof(o));
+
+        // Catch a bad fps here rather than let the engine reject it and exit before opening the pipe,
+        // which the plugin host would only surface as an opaque 5-minute TimeoutException. NaN slips
+        // past a plain `<= 0` (every NaN comparison is false), so test finiteness explicitly.
+        if (o.VideoFps is { } fps && (!double.IsFinite(fps) || fps <= 0))
+            throw new ArgumentException(
+                $"ReplayOptions.VideoFps must be a positive, finite number (got {fps.ToString(CultureInfo.InvariantCulture)}).",
+                nameof(o));
+
         var pipe = $"gamecapture-test-{Guid.NewGuid():N}";
         var outputTail = new OutputTail();
+
+        var engineArgs = BuildEngineArgs(o, pipe);
 
         using var engine = new Process
         {
             StartInfo = new ProcessStartInfo(o.EnginePath)
             {
-                ArgumentList = { "--replay", o.CorpusDir, "--pipe", pipe },
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             },
         };
+        foreach (var arg in engineArgs)
+            engine.StartInfo.ArgumentList.Add(arg);
         engine.OutputDataReceived += (_, e) => outputTail.Add(e.Data);
         engine.ErrorDataReceived += (_, e) => outputTail.Add(e.Data);
 
@@ -89,7 +115,7 @@ public static class ReplayHarness
 
                 throw new TimeoutException(
                     $"ReplayHarness: no result within {o.Timeout} " +
-                    $"(engine '{o.EnginePath}', corpus '{o.CorpusDir}')." + Environment.NewLine +
+                    $"(engine '{o.EnginePath}', source '{SourceDescription(o)}')." + Environment.NewLine +
                     "--- last engine output ---" + Environment.NewLine +
                     outputTail.Text);
             }
@@ -123,6 +149,42 @@ public static class ReplayHarness
             catch (Win32Exception) { /* already exited/exiting */ }
         }
     }
+
+    /// <summary>
+    /// Builds the engine's argument list from whichever source <paramref name="o"/> carries. Assumes
+    /// <see cref="RunAsync"/> has already enforced the exactly-one-of guard, so a set
+    /// <see cref="ReplayOptions.CorpusDir"/> means "replay a PNG corpus" and anything else means
+    /// "replay a video". Mirrors <c>Program.cs</c>'s <c>--replay</c>/<c>--video</c>/<c>--video-fps</c>
+    /// flags. Internal so <c>GameCapture.Sdk.Testing.Tests</c> can assert the mapping without
+    /// spawning a real engine.
+    /// </summary>
+    internal static List<string> BuildEngineArgs(ReplayOptions o, string pipe)
+    {
+        var args = new List<string>();
+        if (!string.IsNullOrEmpty(o.CorpusDir))
+        {
+            args.Add("--replay");
+            args.Add(o.CorpusDir);
+        }
+        else
+        {
+            args.Add("--video");
+            args.Add(o.VideoPath!);
+            if (o.VideoFps is { } fps)
+            {
+                args.Add("--video-fps");
+                args.Add(fps.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+        args.Add("--pipe");
+        args.Add(pipe);
+        return args;
+    }
+
+    /// <summary>The source that was actually set, for exception messages. Assumes the exactly-one-of
+    /// guard has run.</summary>
+    private static string SourceDescription(ReplayOptions o) =>
+        !string.IsNullOrEmpty(o.CorpusDir) ? o.CorpusDir : o.VideoPath!;
 
     /// <summary>Forwards every <see cref="IGameCapturePlugin"/> member to <paramref name="inner"/>
     /// unchanged, except for capturing the reason a run ended — the one thing
