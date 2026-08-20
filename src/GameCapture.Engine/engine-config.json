@@ -6,5 +6,6 @@
   "pipeName": "GameCapture.Engine",
   "scanIntervalMs": 500,
   "metricsEnabled": true,
-  "metricsIntervalMs": 1000
+  "metricsIntervalMs": 1000,
+  "trayEnabled": true
 }

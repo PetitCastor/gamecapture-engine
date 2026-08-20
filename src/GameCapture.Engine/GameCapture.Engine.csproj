@@ -8,6 +8,9 @@
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <PlatformTarget>x64</PlatformTarget>
     <RootNamespace>GameCapture.Engine</RootNamespace>
+    <!-- Tray icon (GameCapture.Engine.Tray) hosts a WinForms NotifyIcon in-process. OutputType stays
+         Exe, not WinExe: the engine keeps its console banner and the tray runs on its own STA thread. -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <!-- Hosts gRPC on Kestrel without switching to the Web SDK, which would drag in the whole
@@ -33,7 +36,9 @@
 
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.11" />
+    <!-- System.Diagnostics.PerformanceCounter (used by Metrics/MetricsSampler) is provided by the
+         Windows Desktop framework that UseWindowsForms pulls in, so an explicit reference now trips
+         NU1510 (redundant, un-prunable). The MetricsSampler types resolve from that framework. -->
   </ItemGroup>
 
 </Project>
