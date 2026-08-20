@@ -1,3 +1,6 @@
+// UseWindowsForms (added for the in-process tray) drops System.Windows.Forms into the implicit
+// usings, making a bare Timer ambiguous. This reporter's timer is the threading one.
+using Timer = System.Threading.Timer;
 
 namespace GameCapture.Engine.Metrics;
 
@@ -17,6 +20,13 @@ public sealed class MetricsReporter : IDisposable
     private readonly Timer _timer;
     private bool _disposed;
 
+    /// <summary>
+    /// Raised with each sample so a second consumer (the tray) can read process health without
+    /// running its own <see cref="MetricsSampler"/> — the sampler is stateful and not thread-safe, so
+    /// exactly one timer may tick it. Fires on the timer thread; a UI handler must marshal.
+    /// </summary>
+    public event Action<MetricsSnapshot>? Sampled;
+
     public MetricsReporter(ConsoleSink sink, TimeSpan interval)
     {
         _sink = sink;
@@ -31,7 +41,18 @@ public sealed class MetricsReporter : IDisposable
         // metrics must never take the tracker down. Stop re-arming on failure.
         try
         {
-            _sink.UpdateStatus(MetricsFormatter.Format(_sampler.Sample()));
+            var snapshot = _sampler.Sample();
+            _sink.UpdateStatus(MetricsFormatter.Format(snapshot));
+            try
+            {
+                Sampled?.Invoke(snapshot);
+            }
+            catch (Exception ex)
+            {
+                // A subscriber fault (the tray) must not disable the console status bar or the re-arm
+                // below — isolate it from the reporter's own timer.
+                _sink.WriteLine($"[metrics] subscriber error: {ex.Message}");
+            }
             lock (_timer)
             {
                 if (!_disposed)

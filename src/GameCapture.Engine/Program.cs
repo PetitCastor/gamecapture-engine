@@ -1,6 +1,7 @@
 using System.Globalization;
 using GameCapture.Engine;
 using GameCapture.Engine.Metrics;
+using GameCapture.Engine.Tray;
 
 // First statement so every later write goes through it and disposal (status-bar erase,
 // cursor restore) is guaranteed on every return path.
@@ -220,6 +221,7 @@ Console.CancelKeyPress += (_, e) =>
 
 HotkeyListener? hotkey = null;
 MetricsReporter? metrics = null;
+TrayApplication? tray = null;
 
 if (livePaced)
 {
@@ -241,6 +243,7 @@ if (livePaced)
     hotkey = new HotkeyListener(modifiers, virtualKey, onHotkey);
     sink.WriteLine($"Hotkey:    {config.Hotkey} (manual trigger{(saveFrames ? " + save frame" : "")})");
     sink.WriteLine($"Metrics:   {(config.MetricsEnabled ? $"live status bar every {config.MetricsIntervalMs} ms" : "disabled")}");
+    sink.WriteLine($"Tray:      {(config.TrayEnabled ? "on" : "off")}");
 }
 
 sink.WriteLine();
@@ -256,10 +259,25 @@ try
     if (livePaced && config.MetricsEnabled)
         metrics = new MetricsReporter(sink, TimeSpan.FromMilliseconds(config.MetricsIntervalMs));
 
+    if (livePaced && config.TrayEnabled)
+    {
+        tray = new TrayApplication(
+            sink,
+            engine.Status,
+            config.MetricsEnabled,
+            TimeSpan.FromMilliseconds(Math.Max(250, config.MetricsIntervalMs)));
+        tray.Start();
+        // Feed the same sample stream the console status bar uses; the tray never ticks its own
+        // sampler (MetricsSampler is stateful and single-threaded by contract).
+        if (metrics is not null)
+            metrics.Sampled += tray.OnMetrics;
+    }
+
     await engine.RunScanAsync(cts.Token);
 }
 finally
 {
+    tray?.Dispose();    // remove the icon before the console summary prints
     metrics?.Dispose(); // stop status updates before the summary prints
     hotkey?.Dispose();
 }

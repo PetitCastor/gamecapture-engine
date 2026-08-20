@@ -37,6 +37,12 @@ public sealed class EngineConfig
     /// <summary>Status bar refresh cadence; values below 250 are clamped up at use.</summary>
     public int MetricsIntervalMs { get; set; } = 1000;
 
+    /// <summary>
+    /// Show the Windows tray icon (live capture only). Reflects engine state, metrics and connected
+    /// plugins; the metrics popup depends on <see cref="MetricsEnabled"/> for its process-health line.
+    /// </summary>
+    public bool TrayEnabled { get; set; } = true;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
