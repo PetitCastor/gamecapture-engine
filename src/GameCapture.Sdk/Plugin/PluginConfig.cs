@@ -23,6 +23,12 @@ public abstract class PluginConfig
     /// </summary>
     public bool SaveDebugFrames { get; set; }
 
+    /// <summary>
+    /// Sinks to build and hand the host, keyed by type — file/HTTP/overlay destinations a plugin
+    /// author turns on without writing any sink-wiring code. Empty is today's behaviour: no sinks.
+    /// </summary>
+    public IReadOnlyList<SinkSpec> Outputs { get; set; } = [];
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -46,11 +52,13 @@ public abstract class PluginConfig
             var defaults = new T();
             File.WriteAllText(path, JsonSerializer.Serialize(defaults, JsonOptions));
             defaults.AfterLoad(path);
+            ResolveOutputPaths(defaults, path);
             return defaults;
         }
 
         var config = JsonSerializer.Deserialize<T>(File.ReadAllText(path), JsonOptions) ?? new T();
         config.AfterLoad(path);
+        ResolveOutputPaths(config, path);
         return config;
     }
 
@@ -61,4 +69,25 @@ public abstract class PluginConfig
     /// read or written, whether or not it existed a moment ago.
     /// </summary>
     protected virtual void AfterLoad(string configPath) { }
+
+    /// <summary>
+    /// Resolves every <see cref="SinkSpec.Path"/> in <see cref="Outputs"/> against the config file's
+    /// directory. Run unconditionally by <see cref="Load{T}"/> rather than from <see cref="AfterLoad"/>
+    /// itself, because an override like <c>RefineryConfig.AfterLoad</c> does not call the base
+    /// implementation.
+    /// </summary>
+    private static void ResolveOutputPaths(PluginConfig config, string configPath)
+    {
+        foreach (var spec in config.Outputs)
+            if (!string.IsNullOrWhiteSpace(spec.Path))
+                spec.Path = ResolveAgainstConfig(spec.Path, configPath);
+    }
+
+    /// <summary>
+    /// A relative path resolves against the config file's own directory; a rooted path is used
+    /// verbatim. The pattern <c>RefineryConfig.ResolveLedgerPath</c> already used for its ledger,
+    /// generalised here so every plugin's <see cref="Outputs"/> paths get it for free.
+    /// </summary>
+    protected static string ResolveAgainstConfig(string path, string configPath)
+        => Path.IsPathRooted(path) ? path : Path.GetFullPath(path, Path.GetDirectoryName(configPath)!);
 }

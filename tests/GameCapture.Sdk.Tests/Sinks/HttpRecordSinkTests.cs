@@ -24,7 +24,7 @@ public class HttpRecordSinkTests
     {
         var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var client = new HttpClient(handler);
-        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), replayMode: false, client: client);
+        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), isReplay: () => false, client: client);
 
         await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
 
@@ -38,7 +38,7 @@ public class HttpRecordSinkTests
     {
         var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
         var client = new HttpClient(handler);
-        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), replayMode: false, client: client);
+        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), isReplay: () => false, client: client);
 
         await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
     }
@@ -48,7 +48,7 @@ public class HttpRecordSinkTests
     {
         var handler = new FakeHandler(_ => throw new HttpRequestException("boom"));
         var client = new HttpClient(handler);
-        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), replayMode: false, client: client);
+        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), isReplay: () => false, client: client);
 
         await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
     }
@@ -58,7 +58,7 @@ public class HttpRecordSinkTests
     {
         var handler = new FakeHandler(_ => throw new InvalidOperationException("must not be called"));
         var client = new HttpClient(handler);
-        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), replayMode: true, client: client);
+        await using var sink = new HttpRecordSink(new Uri("http://example.test/records"), isReplay: () => true, client: client);
 
         await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
 

@@ -273,6 +273,55 @@ public class GameCapturePluginHostTests
 
     private sealed class SuppliedConfig : PluginConfig;
 
+    /// <summary>
+    /// SINK-04: a bad <c>outputs</c> entry aborts the run before it ever dials the engine, the same
+    /// way a bad command line does — not on the first emit, which nothing would be watching for.
+    /// </summary>
+    [Fact]
+    public async Task MalformedOutputSpec_ExitsOneWithoutConnecting()
+    {
+        var output = new RecordingOutput();
+        var options = new PluginHostOptions
+        {
+            Output = output,
+            ConfigFileName = null,
+            HandleCancelKeyPress = false,
+            Config = new SuppliedConfig { Outputs = [new SinkSpec { Type = "json" }] }, // no Path
+        };
+
+        var exit = await GameCapturePluginHost.RunAsync(new StubPlugin(), [], options);
+
+        Assert.Equal(1, exit);
+        Assert.DoesNotContain("waiting for engine", output.Text);
+    }
+
+    /// <summary>
+    /// <see cref="PluginHostOptions.Sinks"/> is for tests/embedding and must win over whatever the
+    /// config file says — a config-driven sink the caller did not ask for in a test would otherwise
+    /// write to a real path.
+    /// </summary>
+    [Fact]
+    public async Task ExplicitSinksOption_WinsOverConfigOutputs()
+    {
+        using var shutdown = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        var output = new RecordingOutput();
+        var sink = new FakeRecordSink();
+
+        var exit = await GameCapturePluginHost.RunAsync(new StubPlugin(), ["--pipe", DeadPipe()],
+            new PluginHostOptions
+            {
+                Output = output,
+                ConfigFileName = null,
+                HandleCancelKeyPress = false,
+                ShutdownToken = shutdown.Token,
+                Sinks = [sink],
+                // Would abort the run with exit 1 if it were consulted instead of Sinks above.
+                Config = new SuppliedConfig { Outputs = [new SinkSpec { Type = "json" }] },
+            }).WaitAsync(TestTimeout);
+
+        Assert.Equal(0, exit);
+    }
+
     [Fact]
     public async Task NullOptions_AreAccepted()
     {

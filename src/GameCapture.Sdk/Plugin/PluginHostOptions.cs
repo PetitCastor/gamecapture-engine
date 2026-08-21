@@ -107,4 +107,12 @@ public sealed class PluginHostOptions
     /// <see cref="CompositeRecordSink"/>.
     /// </remarks>
     public IReadOnlyList<IRecordSink>? Sinks { get; init; }
+
+    /// <summary>
+    /// Builds the sink for an <c>"overlay"</c> entry in <see cref="PluginConfig.Outputs"/>. Null —
+    /// the ordinary case for a plugin that does not reference the (Windows-only) overlay package —
+    /// routes an overlay output to <see cref="NullRecordSink"/> instead of failing the run. A plugin
+    /// that wants the overlay passes the companion package's implementation here.
+    /// </summary>
+    public IOverlaySinkFactory? OverlayFactory { get; init; }
 }

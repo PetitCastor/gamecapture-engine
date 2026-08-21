@@ -7,27 +7,34 @@ namespace GameCapture.Sdk;
 /// <see cref="EmitAsync"/> — a bad status or a network failure is logged and swallowed.</summary>
 public sealed class HttpRecordSink : IRecordSink
 {
-    private readonly bool _replayMode;
+    private readonly Func<bool> _isReplay;
     private readonly bool _recordClears;
     private readonly Uri _endpoint;
     private readonly HttpClient _client;
     private readonly bool _ownsClient;
+    private bool _loggedReplaySkip;
 
-    public HttpRecordSink(Uri endpoint, bool replayMode, bool recordClears = false,
+    public HttpRecordSink(Uri endpoint, Func<bool> isReplay, bool recordClears = false,
         HttpClient? client = null, TimeSpan? timeout = null)
     {
-        _replayMode = replayMode;
+        _isReplay = isReplay;
         _recordClears = recordClears;
         _endpoint = endpoint;
         _ownsClient = client is null;
         _client = client ?? new HttpClient { Timeout = timeout ?? TimeSpan.FromSeconds(5) };
-        if (_replayMode)
-            Console.Error.WriteLine($"HttpRecordSink: replay mode, '{endpoint}' will not be posted to.");
     }
 
     public async ValueTask EmitAsync(CaptureRecord record, CancellationToken ct)
     {
-        if (_replayMode) return;
+        if (_isReplay())
+        {
+            if (!_loggedReplaySkip)
+            {
+                _loggedReplaySkip = true;
+                Console.Error.WriteLine($"HttpRecordSink: replay mode, '{_endpoint}' will not be posted to.");
+            }
+            return;
+        }
         if (record.Kind == RecordKind.Cleared && !_recordClears) return;
 
         var obj = new Dictionary<string, object?>
