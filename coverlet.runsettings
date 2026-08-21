@@ -23,10 +23,13 @@
     that keeps a replay from writing into real order history, and LedgerTargetTests pins it.
   - Core/LiveFrameSource.cs is added: it is the WGC frame pump extracted out of the monolith's
     MonitorCapture path, and like MonitorCapture it cannot run without a live capture session.
-  - Tray/TrayApplication.cs, Tray/StatusForm.cs and Tray/TrayIconFactory.cs are the in-process tray's
-    STA message loop, WinForms popup and GDI icon drawing — process/UI edge that cannot run without a
-    desktop. The tray's actual display decisions live in Tray/TrayViewBuilder.cs, Tray/FrameRateTracker.cs
-    and Tray/TrayIconState.cs, which are pure and stay gated (TrayViewBuilderTests, FrameRateTrackerTests).
+  - Tray/TrayApplication.cs, Tray/StatusForm.cs, Tray/SettingsForm.cs and Tray/TrayIconFactory.cs are
+    the in-process tray's STA message loop, WinForms popup, settings dialog and GDI icon drawing —
+    process/UI edge that cannot run without a desktop. The tray's actual display decisions live in
+    Tray/TrayViewBuilder.cs, Tray/FrameRateTracker.cs and Tray/TrayIconState.cs, which are pure and stay
+    gated (TrayViewBuilderTests, FrameRateTrackerTests). Tray/TrayControls.cs is a callback carrier whose
+    only consumers are the excluded UI-edge files, so it is excluded too; Tray/EngineSettings.cs carries
+    the value-equality the no-op-save guard relies on and stays gated (EngineSettingsTests).
 
   TASK-8's brief also listed Core/HotkeyListener.cs and Core/OcrPipeline.cs as process-edge files
   to exclude. They are deliberately NOT excluded, because the same task moved 28 tests onto their
@@ -64,6 +67,8 @@
             **/Metrics/MetricsReporter.cs,
             **/Tray/TrayApplication.cs,
             **/Tray/StatusForm.cs,
+            **/Tray/SettingsForm.cs,
+            **/Tray/TrayControls.cs,
             **/Tray/TrayIconFactory.cs,
             **/Program.cs
           </ExcludeByFile>

@@ -7,8 +7,9 @@ namespace GameCapture.Engine.Tray;
 /// <summary>
 /// Hosts the Windows tray icon inside the engine process. Runs its own STA thread with a WinForms
 /// message loop; a UI timer polls <see cref="EngineStatus"/> and the latest metrics sample, composes
-/// a <see cref="TrayView"/>, and repaints the icon, tooltip and popup. Read-only in this phase — no
-/// control actions.
+/// a <see cref="TrayView"/>, and repaints the icon, tooltip and popup. When a <see cref="TrayControls"/>
+/// is supplied the menu also offers monitor selection, a settings screen and an exit action; those
+/// callbacks are the host's, since applying any of them means persisting config and restarting.
 /// </summary>
 /// <remarks>
 /// UI/threading edge, excluded from the coverage gate. The decisions it makes about <em>what</em> to
@@ -21,6 +22,7 @@ public sealed class TrayApplication : IDisposable
     private readonly EngineStatus _status;
     private readonly bool _metricsEnabled;
     private readonly TimeSpan _pollInterval;
+    private readonly TrayControls? _controls;
     private readonly ManualResetEventSlim _ready = new(false);
     private readonly FrameRateTracker _fps = new();
 
@@ -36,12 +38,18 @@ public sealed class TrayApplication : IDisposable
     // and the tray only ever wants the most recent sample, so no lock is needed.
     private volatile MetricsSnapshot? _latestMetrics;
 
-    public TrayApplication(ConsoleSink sink, EngineStatus status, bool metricsEnabled, TimeSpan pollInterval)
+    public TrayApplication(
+        ConsoleSink sink,
+        EngineStatus status,
+        bool metricsEnabled,
+        TimeSpan pollInterval,
+        TrayControls? controls = null)
     {
         _sink = sink;
         _status = status;
         _metricsEnabled = metricsEnabled;
         _pollInterval = pollInterval;
+        _controls = controls;
     }
 
     /// <summary>Starts the tray thread and blocks until the icon is live, so the caller can wire metrics.</summary>
@@ -71,6 +79,7 @@ public sealed class TrayApplication : IDisposable
 
             _menu = new ContextMenuStrip();
             _menu.Items.Add("Status…", null, (_, _) => ShowPopup());
+            BuildControlMenu(_menu);
 
             _icon = new NotifyIcon
             {
@@ -120,6 +129,45 @@ public sealed class TrayApplication : IDisposable
     {
         Refresh();
         _form!.ShowNear(Cursor.Position);
+    }
+
+    // Adds the control actions below "Status…" when the host wired them. Selecting a monitor or saving
+    // settings hands off to the host callback, which persists the change and restarts the engine — the
+    // captured monitor, OCR pack, output dir and scan cadence are all bound at startup.
+    private void BuildControlMenu(ContextMenuStrip menu)
+    {
+        if (_controls is not { } controls)
+            return;
+
+        var monitors = new ToolStripMenuItem("Capture monitor");
+        for (var i = 0; i < controls.MonitorLabels.Count; i++)
+        {
+            var index = i; // capture the loop value, not the variable, for the click handler
+            var item = new ToolStripMenuItem(controls.MonitorLabels[i])
+            {
+                Checked = index == controls.CurrentMonitorIndex,
+                CheckOnClick = false,
+            };
+            item.Click += (_, _) =>
+            {
+                if (index != controls.CurrentMonitorIndex)
+                    controls.OnSelectMonitor(index);
+            };
+            monitors.DropDownItems.Add(item);
+        }
+        if (monitors.HasDropDownItems)
+            menu.Items.Add(monitors);
+
+        menu.Items.Add("Settings…", null, (_, _) => OpenSettings(controls));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Exit", null, (_, _) => controls.OnExit());
+    }
+
+    private void OpenSettings(TrayControls controls)
+    {
+        using var dialog = new SettingsForm(controls.Settings, controls.AvailableOcrLanguages);
+        if (dialog.ShowDialog() == DialogResult.OK && dialog.Result != controls.Settings)
+            controls.OnSaveSettings(dialog.Result);
     }
 
     private void Refresh()
