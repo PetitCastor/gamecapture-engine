@@ -184,6 +184,7 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
         catch (Exception ex)
         {
             _startupFailure = ex;
+            Volatile.Write(ref _threadId, 0);
             _ready.Set();
             return;
         }
@@ -467,7 +468,7 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostMessageW(nint window, uint message, nuint wParam, nint lParam);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostThreadMessageW(uint threadId, uint message, nuint wParam, nint lParam);
 

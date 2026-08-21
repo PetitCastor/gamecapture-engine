@@ -9,6 +9,7 @@ public class LingerTimerStateTests
     {
         var state = new LingerTimerState();
         var oldTimer = state.Reset();
+        state.Clear();
 
         var currentTimer = state.Reset();
 

@@ -9,13 +9,16 @@ The plugin executable should also declare the setting in its `app.manifest`, bec
 applied before any process window can be created:
 
 ```xml
-<application xmlns="urn:schemas-microsoft-com:asm.v3">
-  <windowsSettings>
-    <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
-      PerMonitorV2
-    </dpiAwareness>
-  </windowsSettings>
-</application>
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+        PerMonitorV2
+      </dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>
 ```
 
 Reference that manifest from the plugin project:
