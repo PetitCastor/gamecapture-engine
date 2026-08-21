@@ -91,11 +91,21 @@ public static class GameCapturePluginHost
         {
             using var client = new CaptureClient(parsed.PipeName);
 
+            // The DelegateRecordSink adapter keeps the legacy RecordSink callback working as one more
+            // sink in the composite, so the replay harness path is unchanged.
+            List<IRecordSink> sinks = [.. options.Sinks ?? []];
+            if (options.RecordSink is { } legacy)
+                sinks.Add(new DelegateRecordSink(legacy));
+
             // Debug dumps are the engine's to write — the frame never crosses the boundary, only the
             // path it was written to. Null switches the whole debug path off inside the plugin.
+            // recordSink is null here (not options.RecordSink): the legacy callback already reaches
+            // Emit through the DelegateRecordSink added to sinks above — passing it a second time
+            // would invoke it twice per record, once synchronously and once off the drain thread.
             var services = new PluginServices(records, output, parsed.Verbose,
                 config.SaveDebugFrames ? client.DumpFrameAsync : null,
-                client.ReadRoiAsync, options.RecordSink);
+                client.ReadRoiAsync, recordSink: null, sink: new CompositeRecordSink(sinks));
+            services.StartDraining(ct);
 
             output.WriteLine($"Pipe:      {parsed.PipeName}");
             output.WriteLine($"Debug:     {(config.SaveDebugFrames
@@ -103,12 +113,22 @@ public static class GameCapturePluginHost
                 : "in-memory only, no files")}");
             output.WriteLine();
 
-            var (reason, exitCode) = await RunSessionsAsync(plugin, client, services, output, options,
-                parsed.PipeName, ct);
+            int exitCode;
+            try
+            {
+                var (reason, code) = await RunSessionsAsync(plugin, client, services, output, options,
+                    parsed.PipeName, ct);
+                exitCode = code;
 
-            plugin.OnSessionEvent(new SessionEvent.Ended(reason));
-
-            WriteSummary(plugin, records, output);
+                plugin.OnSessionEvent(new SessionEvent.Ended(reason));
+            }
+            finally
+            {
+                // Always flush, even if OnSessionEvent above threw — and always before the summary,
+                // since the summary must reflect what the sinks already received.
+                await services.CompleteAndDrainAsync();
+                WriteSummary(plugin, records, output);
+            }
             return exitCode;
         }
         finally
