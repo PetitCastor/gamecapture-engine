@@ -48,10 +48,10 @@
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
   </PropertyGroup>
 
-  <!-- Nothing ships unless it says so. Only the three consumable libraries flip this back to true
-       (GameCapture.Contracts, GameCapture.Sdk, GameCapture.Sdk.Testing); the engine is a release-zip
-       exe, and a test project has no business on a feed. Opt-in rather than opt-out so a project
-       added later cannot be published by forgetting a line. -->
+  <!-- Nothing ships unless it says so. Only the four consumable libraries flip this back to true
+       (GameCapture.Contracts, GameCapture.Sdk, GameCapture.Sdk.Testing, GameCapture.Sdk.Overlay);
+       the engine is a release-zip exe, and a test project has no business on a feed. Opt-in rather
+       than opt-out so a project added later cannot be published by forgetting a line. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
