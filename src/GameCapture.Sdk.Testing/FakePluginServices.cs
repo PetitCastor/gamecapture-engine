@@ -17,6 +17,9 @@ public sealed class FakePluginServices : IPluginServices
     /// <summary>Every record a plugin under test handed to <see cref="Emit"/>, in order.</summary>
     public List<CaptureRecord> Emitted { get; } = [];
 
+    /// <summary>Every clear a plugin under test handed to <see cref="EmitCleared"/>, in order.</summary>
+    public List<CaptureRecord> Cleared { get; } = [];
+
     /// <summary>Every line written through <see cref="Log"/>.</summary>
     public IReadOnlyList<string> Logs => _logs;
 
@@ -46,6 +49,9 @@ public sealed class FakePluginServices : IPluginServices
     public Func<RoiSubscription, CancellationToken, Task<OcrRegionResult?>>? ReadRoiHandler { get; set; }
 
     public void Emit(CaptureRecord record) => Emitted.Add(record);
+
+    public void EmitCleared(DateTime timestamp, string plugin)
+        => Cleared.Add(new CaptureRecord(timestamp, plugin, TriggerKind.Auto, "") { Kind = RecordKind.Cleared });
 
     public Task<string?> DumpFrameAsync(RoiRect? roi, string prefix, CancellationToken ct)
     {
