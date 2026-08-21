@@ -65,6 +65,24 @@ public class ChangeDedupeSinkTests
     }
 
     [Fact]
+    public async Task EmitAsync_EmptyFieldsAndEmptyRawTextAreDistinctKeySpaces()
+    {
+        var inner = new FakeRecordSink();
+        var dedupe = new ChangeDedupeSink(inner);
+
+        var emptyFields = new CaptureRecord(DateTime.Now, "ore", TriggerKind.Auto, "")
+        {
+            Fields = new Dictionary<string, string>(),
+        };
+        var nullFieldsEmptyRawText = new CaptureRecord(DateTime.Now, "ore", TriggerKind.Auto, "");
+
+        await dedupe.EmitAsync(emptyFields, CancellationToken.None);
+        await dedupe.EmitAsync(nullFieldsEmptyRawText, CancellationToken.None);
+
+        Assert.Equal(2, inner.Received.Count);
+    }
+
+    [Fact]
     public async Task DisposeAsync_DisposesTheInnerSink()
     {
         var inner = new FakeRecordSink();

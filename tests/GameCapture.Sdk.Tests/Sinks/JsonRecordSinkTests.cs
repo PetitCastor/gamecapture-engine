@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Xunit;
 
@@ -89,5 +90,20 @@ public class JsonRecordSinkTests
             Assert.Single(lines);
         }
         finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task EmitAsync_OnAWriteFailure_DoesNotThrow()
+    {
+        var path = TempPath();
+        try
+        {
+            var sink = new JsonRecordSink(path, replayMode: false);
+            var writerField = typeof(JsonRecordSink).GetField("_writer", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            ((StreamWriter)writerField.GetValue(sink)!).Dispose();
+
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
     }
 }

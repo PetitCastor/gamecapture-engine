@@ -1,3 +1,4 @@
+using System.Reflection;
 using Xunit;
 
 namespace GameCapture.Sdk.Tests.Sinks;
@@ -72,6 +73,23 @@ public class CsvRecordSinkTests
     }
 
     [Fact]
+    public async Task EmitAsync_AppendingToAPreCreatedEmptyFile_StillWritesTheHeader()
+    {
+        var path = TempPath();
+        try
+        {
+            await File.Create(path).DisposeAsync();
+
+            await using (var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: []))
+                await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+
+            var lines = await File.ReadAllLinesAsync(path);
+            Assert.Equal("timestamp,plugin,trigger,kind,rawText", lines[0]);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public async Task EmitAsync_MissingFieldForAConfiguredColumn_WritesAnEmptyCell()
     {
         var path = TempPath();
@@ -88,5 +106,20 @@ public class CsvRecordSinkTests
             Assert.EndsWith(",1,", lines[1]);
         }
         finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task EmitAsync_OnAWriteFailure_DoesNotThrow()
+    {
+        var path = TempPath();
+        try
+        {
+            var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: []);
+            var writerField = typeof(CsvRecordSink).GetField("_writer", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            ((StreamWriter)writerField.GetValue(sink)!).Dispose();
+
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
     }
 }

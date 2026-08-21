@@ -26,9 +26,11 @@ public sealed class ChangeDedupeSink(IRecordSink inner) : IRecordSink
 
     private static string KeyOf(CaptureRecord record)
     {
-        if (record.Fields is null) return record.RawText;
+        // R/F tag keeps the Fields key-space and the RawText key-space from colliding, e.g. an
+        // empty Fields dict (key "F") vs. a null-Fields record with empty RawText (key "R").
+        if (record.Fields is null) return $"R{FieldSep}{record.RawText}";
         return string.Join(FieldSep, record.Fields.OrderBy(kv => kv.Key, StringComparer.Ordinal)
-            .Select(kv => $"{kv.Key}{FieldSep}{kv.Value}"));
+            .Select(kv => $"{kv.Key}{FieldSep}{kv.Value}").Prepend("F"));
     }
 
     public ValueTask DisposeAsync() => inner.DisposeAsync();

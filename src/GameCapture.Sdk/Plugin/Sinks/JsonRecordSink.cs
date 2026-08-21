@@ -42,8 +42,15 @@ public sealed class JsonRecordSink : IRecordSink
         if (record.Fields is not null)
             foreach (var (k, v) in record.Fields) obj[k] = v;
 
-        await _writer!.WriteLineAsync(JsonSerializer.Serialize(obj).AsMemory(), ct);
-        await _writer.FlushAsync(ct);
+        try
+        {
+            await _writer!.WriteLineAsync(JsonSerializer.Serialize(obj).AsMemory(), ct);
+            await _writer.FlushAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            Console.Error.WriteLine($"JsonRecordSink: write failed: {ex.Message}");
+        }
     }
 
     public async ValueTask DisposeAsync()
