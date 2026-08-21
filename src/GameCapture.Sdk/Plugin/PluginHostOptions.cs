@@ -96,4 +96,15 @@ public sealed class PluginHostOptions
     /// on what was captured rather than on the summary line.
     /// </remarks>
     public Action<CaptureRecord>? RecordSink { get; init; }
+
+    /// <summary>
+    /// Sinks every emitted <see cref="CaptureRecord"/> (and <see cref="IPluginServices.EmitCleared"/>)
+    /// fans out to, off the tick thread. Null — the ordinary case — means no sinks.
+    /// </summary>
+    /// <remarks>
+    /// SINK-04 composes this list from config; the host itself just wires whatever is passed here,
+    /// alongside a <see cref="DelegateRecordSink"/> adapter for <see cref="RecordSink"/>, into one
+    /// <see cref="CompositeRecordSink"/>.
+    /// </remarks>
+    public IReadOnlyList<IRecordSink>? Sinks { get; init; }
 }

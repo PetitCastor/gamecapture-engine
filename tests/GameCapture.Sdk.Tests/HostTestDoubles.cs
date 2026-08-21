@@ -115,3 +115,35 @@ internal static class TickFactory
         return TickData.From(proto);
     }
 }
+
+/// <summary>A sink that remembers what it received, for asserting order and delivery without a real
+/// I/O destination. <see cref="ThrowOnEmit"/> stands in for a sink that fails on a transient error.</summary>
+internal sealed class FakeRecordSink : IRecordSink
+{
+    private readonly Lock _gate = new();
+    private readonly List<CaptureRecord> _received = [];
+
+    public bool ThrowOnEmit { get; init; }
+
+    public bool Disposed { get; private set; }
+
+    public IReadOnlyList<CaptureRecord> Received
+    {
+        get { lock (_gate) return _received.ToArray(); }
+    }
+
+    public ValueTask EmitAsync(CaptureRecord record, CancellationToken ct)
+    {
+        if (ThrowOnEmit)
+            throw new InvalidOperationException("simulated sink failure");
+
+        lock (_gate) _received.Add(record);
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Disposed = true;
+        return ValueTask.CompletedTask;
+    }
+}
