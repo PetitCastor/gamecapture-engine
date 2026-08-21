@@ -34,9 +34,6 @@ public sealed class JsonRecordSink : IRecordSink
             return;
         }
         if (record.Kind == RecordKind.Cleared && !_recordClears) return;
-
-        _writer ??= OpenWriter();
-
         var obj = new Dictionary<string, object?>
         {
             ["timestamp"] = record.Timestamp,
@@ -50,8 +47,9 @@ public sealed class JsonRecordSink : IRecordSink
 
         try
         {
-            await _writer.WriteLineAsync(JsonSerializer.Serialize(obj).AsMemory(), ct);
-            await _writer.FlushAsync(ct);
+            var writer = _writer ??= OpenWriter();
+            await writer.WriteLineAsync(JsonSerializer.Serialize(obj).AsMemory(), ct);
+            await writer.FlushAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {

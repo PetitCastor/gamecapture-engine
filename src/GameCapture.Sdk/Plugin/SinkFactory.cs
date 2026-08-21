@@ -10,6 +10,8 @@ internal static class SinkFactory
     public static IRecordSink Build(SinkSpec spec, Func<bool> isReplay, IPluginOutput log,
         IOverlaySinkFactory? overlayFactory)
     {
+        ArgumentNullException.ThrowIfNull(spec);
+
         if (spec.Type == "overlay")
             return overlayFactory?.Create(spec.Overlay ?? new(), log) ?? NullRecordSink.Instance;
 
@@ -33,8 +35,15 @@ internal static class SinkFactory
         var url = !string.IsNullOrWhiteSpace(spec.Url)
             ? spec.Url
             : throw new ArgumentException($"output type '{spec.Type}' requires 'url'");
-        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            ? uri
-            : throw new ArgumentException($"output type '{spec.Type}' has an invalid 'url': '{url}'");
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || string.IsNullOrWhiteSpace(uri.Host))
+        {
+            throw new ArgumentException(
+                $"output type '{spec.Type}' has an invalid 'url': '{url}' (expected http/https)");
+        }
+
+        return uri;
     }
 }
+

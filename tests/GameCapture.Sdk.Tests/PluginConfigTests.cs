@@ -24,6 +24,9 @@ public class PluginConfigTests : IDisposable
         /// <summary>Records that the hook ran, and what it was told the config's own path was.</summary>
         internal string? ResolvedAgainst { get; private set; }
 
+        internal static string ResolvePath(string path, string configPath)
+            => ResolveAgainstConfig(path, configPath);
+
         protected override void AfterLoad(string configPath) => ResolvedAgainst = configPath;
     }
 
@@ -188,6 +191,17 @@ public class PluginConfigTests : IDisposable
         Assert.True(spec.DedupeOnChange); // default, not overridden by this JSON
     }
 
+    [Fact]
+    public void Outputs_Null_NormalizesToEmpty()
+    {
+        var path = Path_("config.json");
+        File.WriteAllText(path, """{ "outputs": null }""");
+
+        var config = PluginConfig.Load<TestConfig>(path);
+
+        Assert.Empty(config.Outputs);
+    }
+
     /// <summary>
     /// Runs for every plugin regardless of whether its own <c>AfterLoad</c> override calls the base
     /// implementation — <c>RefineryConfig.AfterLoad</c>, for one, does not.
@@ -217,5 +231,13 @@ public class PluginConfigTests : IDisposable
         var config = PluginConfig.Load<TestConfig>(path);
 
         Assert.Equal(rooted, config.Outputs[0].Path);
+    }
+
+    [Fact]
+    public void ResolveAgainstConfig_RelativeConfigPath_UsesTheFullCurrentDirectory()
+    {
+        var resolved = TestConfig.ResolvePath("records.jsonl", "config.json");
+
+        Assert.Equal(Path.GetFullPath("records.jsonl"), resolved);
     }
 }

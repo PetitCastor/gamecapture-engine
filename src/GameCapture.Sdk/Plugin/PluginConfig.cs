@@ -51,12 +51,14 @@ public abstract class PluginConfig
         {
             var defaults = new T();
             File.WriteAllText(path, JsonSerializer.Serialize(defaults, JsonOptions));
+            NormalizeOutputs(defaults);
             defaults.AfterLoad(path);
             ResolveOutputPaths(defaults, path);
             return defaults;
         }
 
         var config = JsonSerializer.Deserialize<T>(File.ReadAllText(path), JsonOptions) ?? new T();
+        NormalizeOutputs(config);
         config.AfterLoad(path);
         ResolveOutputPaths(config, path);
         return config;
@@ -71,6 +73,12 @@ public abstract class PluginConfig
     protected virtual void AfterLoad(string configPath) { }
 
     /// <summary>
+    /// Normalizes a null outputs collection to today's empty-output behaviour before path resolution
+    /// or sink construction.
+    /// </summary>
+    private static void NormalizeOutputs(PluginConfig config) => config.Outputs ??= [];
+
+    /// <summary>
     /// Resolves every <see cref="SinkSpec.Path"/> in <see cref="Outputs"/> against the config file's
     /// directory. Run unconditionally by <see cref="Load{T}"/> rather than from <see cref="AfterLoad"/>
     /// itself, because an override like <c>RefineryConfig.AfterLoad</c> does not call the base
@@ -79,7 +87,7 @@ public abstract class PluginConfig
     private static void ResolveOutputPaths(PluginConfig config, string configPath)
     {
         foreach (var spec in config.Outputs)
-            if (!string.IsNullOrWhiteSpace(spec.Path))
+            if (spec is not null && !string.IsNullOrWhiteSpace(spec.Path))
                 spec.Path = ResolveAgainstConfig(spec.Path, configPath);
     }
 
@@ -89,5 +97,7 @@ public abstract class PluginConfig
     /// generalised here so every plugin's <see cref="Outputs"/> paths get it for free.
     /// </summary>
     protected static string ResolveAgainstConfig(string path, string configPath)
-        => Path.IsPathRooted(path) ? path : Path.GetFullPath(path, Path.GetDirectoryName(configPath)!);
+        => Path.IsPathRooted(path)
+            ? path
+            : Path.GetFullPath(path, Path.GetDirectoryName(Path.GetFullPath(configPath))!);
 }

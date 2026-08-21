@@ -295,6 +295,24 @@ public class GameCapturePluginHostTests
         Assert.DoesNotContain("waiting for engine", output.Text);
     }
 
+    [Fact]
+    public async Task NullOutputSpec_ExitsOneWithoutConnecting()
+    {
+        var output = new RecordingOutput();
+        var options = new PluginHostOptions
+        {
+            Output = output,
+            ConfigFileName = null,
+            HandleCancelKeyPress = false,
+            Config = new SuppliedConfig { Outputs = [null!] },
+        };
+
+        var exit = await GameCapturePluginHost.RunAsync(new StubPlugin(), [], options);
+
+        Assert.Equal(1, exit);
+        Assert.DoesNotContain("waiting for engine", output.Text);
+    }
+
     /// <summary>
     /// <see cref="PluginHostOptions.Sinks"/> is for tests/embedding and must win over whatever the
     /// config file says — a config-driven sink the caller did not ask for in a test would otherwise

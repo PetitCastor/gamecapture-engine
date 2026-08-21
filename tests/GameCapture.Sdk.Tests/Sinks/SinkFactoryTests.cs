@@ -32,6 +32,10 @@ public class SinkFactoryTests
     }
 
     [Fact]
+    public void Build_NullSpec_Throws()
+        => Assert.Throws<ArgumentNullException>(() => SinkFactory.Build(null!, () => false, Log, null));
+
+    [Fact]
     public async Task Build_DedupeOnChangeFalse_SkipsTheDecorator()
     {
         var spec = new SinkSpec { Type = "json", Path = TempPath(), DedupeOnChange = false };
@@ -111,6 +115,17 @@ public class SinkFactoryTests
     public void Build_HttpWithAnInvalidUrl_Throws()
     {
         var spec = new SinkSpec { Type = "http", Url = "not a url" };
+
+        Assert.Throws<ArgumentException>(
+            () => SinkFactory.Build(spec, () => false, Log, overlayFactory: null));
+    }
+
+    [Theory]
+    [InlineData("ftp://example.test/records")]
+    [InlineData("file:///tmp/records")]
+    public void Build_HttpWithAnUnsupportedScheme_Throws(string url)
+    {
+        var spec = new SinkSpec { Type = "http", Url = url };
 
         Assert.Throws<ArgumentException>(
             () => SinkFactory.Build(spec, () => false, Log, overlayFactory: null));

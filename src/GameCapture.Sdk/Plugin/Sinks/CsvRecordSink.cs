@@ -38,8 +38,6 @@ public sealed class CsvRecordSink : IRecordSink
         }
         if (record.Kind == RecordKind.Cleared && !_recordClears) return;
 
-        _writer ??= OpenWriter();
-
         var row = new List<string>
         {
             record.Timestamp.ToString("O"),
@@ -53,8 +51,9 @@ public sealed class CsvRecordSink : IRecordSink
 
         try
         {
-            await _writer.WriteLineAsync(string.Join(',', row.Select(Escape)).AsMemory(), ct);
-            await _writer.FlushAsync(ct);
+            var writer = _writer ??= OpenWriter();
+            await writer.WriteLineAsync(string.Join(',', row.Select(Escape)).AsMemory(), ct);
+            await writer.FlushAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {

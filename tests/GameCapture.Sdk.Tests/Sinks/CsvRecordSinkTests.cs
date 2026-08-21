@@ -124,4 +124,22 @@ public class CsvRecordSinkTests
         }
         finally { if (File.Exists(path)) File.Delete(path); }
     }
+
+    [Fact]
+    public async Task EmitAsync_OnOpenFailure_DoesNotThrow()
+    {
+        var parentFile = TempPath();
+        try
+        {
+            await File.WriteAllTextAsync(parentFile, "parent");
+            var path = Path.Combine(parentFile, "records.csv");
+
+            await using var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: []);
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+        }
+        finally
+        {
+            if (File.Exists(parentFile)) File.Delete(parentFile);
+        }
+    }
 }
