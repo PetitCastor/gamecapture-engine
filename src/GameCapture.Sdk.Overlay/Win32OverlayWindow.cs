@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -33,7 +32,7 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
     private const uint WsExNoActivate = 0x08000000;
     private const byte AcSrcOver = 0;
     private const byte AcSrcAlpha = 1;
-    private const nuint LingerTimerId = 1;
+    private const uint PmNoRemove = 0;
     private const int IdcArrow = 32512;
     private const string WindowClassName = "GameCaptureSdkOverlayWindow";
 
@@ -45,6 +44,7 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
     private readonly Color _foreground;
     private readonly Color _background;
     private readonly ManualResetEventSlim _ready = new();
+    private readonly LingerTimerState _lingerTimer = new();
     private Thread? _thread;
     private Exception? _startupFailure;
     private nint _window;
@@ -108,10 +108,10 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
             return;
 
         var window = Volatile.Read(ref _window);
-        if (window != 0)
-            PostMessageW(window, WmClose, 0, 0);
-        else if (_threadId != 0)
-            PostThreadMessageW(_threadId, WmQuit, 0, 0);
+        var posted = window != 0 && PostMessageW(window, WmClose, 0, 0);
+        var threadId = Volatile.Read(ref _threadId);
+        if (!posted && threadId != 0 && !PostThreadMessageW(threadId, WmQuit, 0, 0))
+            _log.WriteLine($"overlay shutdown signal failed: {new Win32Exception(Marshal.GetLastWin32Error()).Message}");
 
         var stopped = _thread is not { } thread
             || thread == Thread.CurrentThread
@@ -124,9 +124,21 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
 
     private void RunMessagePump()
     {
-        _threadId = GetCurrentThreadId();
+        // PostThreadMessage only works after the target owns a message queue. Create it before
+        // publishing the ID so Dispose can never race a not-yet-addressable pump thread.
+        PeekMessageW(out _, 0, 0, 0, PmNoRemove);
+        Volatile.Write(ref _threadId, GetCurrentThreadId());
         try
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+            var dpiContext = GetThreadDpiAwarenessContext();
+            if (!AreDpiAwarenessContextsEqual(dpiContext, new nint(-4)))
+            {
+                _log.WriteLine(
+                    "overlay is not PerMonitorV2 DPI-aware; add the manifest entry from the package README");
+            }
+
             var module = GetModuleHandleW(null);
             var windowClass = new WindowClassEx
             {
@@ -160,6 +172,12 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
             if (window == 0)
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "CreateWindowEx failed");
 
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                DestroyWindow(window);
+                throw new ObjectDisposedException(nameof(Win32OverlayWindow));
+            }
+
             Volatile.Write(ref _window, window);
             Windows[window] = this;
         }
@@ -179,6 +197,7 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
         }
 
         var current = Interlocked.Exchange(ref _window, 0);
+        Volatile.Write(ref _threadId, 0);
         if (current != 0)
         {
             Windows.TryRemove(current, out _);
@@ -198,8 +217,9 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
                 case WmAppHide:
                     owner.HideNow();
                     return 0;
-                case WmTimer when wParam == LingerTimerId:
-                    owner.HideNow();
+                case WmTimer:
+                    if (owner._lingerTimer.IsCurrent(wParam))
+                        owner.HideNow();
                     return 0;
                 case WmClose:
                     DestroyWindow(window);
@@ -222,10 +242,17 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
             Draw(Volatile.Read(ref _pendingText));
             ShowWindow(_window, SwShowNoActivate);
 
-            KillTimer(_window, LingerTimerId);
+            StopLingerTimer();
             var lingerMs = Volatile.Read(ref _pendingLingerMs);
-            if (lingerMs > 0 && SetTimer(_window, LingerTimerId, (uint)lingerMs, 0) == 0)
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "SetTimer failed");
+            if (lingerMs > 0)
+            {
+                var timerId = _lingerTimer.Reset();
+                if (SetTimer(_window, timerId, (uint)lingerMs, 0) == 0)
+                {
+                    _lingerTimer.Clear();
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "SetTimer failed");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -236,8 +263,16 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
 
     private void HideNow()
     {
-        KillTimer(_window, LingerTimerId);
+        StopLingerTimer();
         ShowWindow(_window, SwHide);
+    }
+
+    private void StopLingerTimer()
+    {
+        var timerId = _lingerTimer.Current;
+        if (timerId != 0)
+            KillTimer(_window, timerId);
+        _lingerTimer.Clear();
     }
 
     private void Draw(string text)
@@ -397,8 +432,6 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
         throw new ArgumentException($"overlay colour '{value}' is invalid", parameterName);
     }
 
-    [UnconditionalSuppressMessage("Interoperability", "SYSLIB1054",
-        Justification = "These callbacks and mutable Win32 structs require classic DllImport marshalling.")]
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetProcessDpiAwarenessContext(nint value);
@@ -438,6 +471,11 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool PostThreadMessageW(uint threadId, uint message, nuint wParam, nint lParam);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PeekMessageW(out NativeMessage message, nint window, uint min, uint max,
+        uint removeMessage);
+
     [DllImport("user32.dll")]
     private static extern void PostQuitMessage(int exitCode);
 
@@ -451,6 +489,13 @@ internal sealed class Win32OverlayWindow : IOverlayWindow
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetThreadDpiAwarenessContext();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AreDpiAwarenessContextsEqual(nint first, nint second);
 
     [DllImport("user32.dll")]
     private static extern nint LoadCursorW(nint instance, nint cursorName);

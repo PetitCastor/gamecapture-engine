@@ -18,10 +18,12 @@
     <PackageId>GameCapture.Sdk.Overlay</PackageId>
     <Description>Opt-in click-through desktop overlay sink for GameCapture plugins.</Description>
     <PackageTags>star-citizen;screen-capture;overlay;plugin;sdk</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="GameCapture.Sdk.Overlay.Tests" />
+    <None Update="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>
