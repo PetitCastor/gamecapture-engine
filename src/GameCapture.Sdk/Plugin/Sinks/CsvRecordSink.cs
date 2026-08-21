@@ -3,42 +3,39 @@ using System.Text;
 namespace GameCapture.Sdk;
 
 /// <summary>Appends CSV rows — a fixed prefix plus a caller-supplied, stable column order for
-/// <see cref="CaptureRecord.Fields"/>. No-ops under replay mode.</summary>
+/// <see cref="CaptureRecord.Fields"/>. Replay mode is checked on every emit rather than once at
+/// construction, so the file (and its header) is opened lazily on the first write that is actually
+/// allowed through — a run that never leaves replay mode never touches the
+/// filesystem.</summary>
 public sealed class CsvRecordSink : IRecordSink
 {
-    private readonly bool _replayMode;
-    private readonly bool _recordClears;
+    private readonly string _path;
     private readonly IReadOnlyList<string> _fieldColumns;
-    private readonly StreamWriter? _writer;
+    private readonly Func<bool> _isReplay;
+    private readonly bool _recordClears;
+    private StreamWriter? _writer;
+    private bool _loggedReplaySkip;
 
-    public CsvRecordSink(string path, bool replayMode, IReadOnlyList<string> fieldColumns, bool recordClears = false)
+    public CsvRecordSink(string path, IReadOnlyList<string> fieldColumns, Func<bool> isReplay,
+        bool recordClears = false)
     {
-        _replayMode = replayMode;
-        _recordClears = recordClears;
+        _path = path;
         _fieldColumns = fieldColumns;
-        if (_replayMode)
-        {
-            Console.Error.WriteLine($"CsvRecordSink: replay mode, '{path}' will not be written.");
-            return;
-        }
-
-        var dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        var isNew = !File.Exists(path) || new FileInfo(path).Length == 0;
-        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
-        _writer = new StreamWriter(stream, Encoding.UTF8);
-        if (isNew)
-        {
-            var header = new List<string> { "timestamp", "plugin", "trigger", "kind", "rawText" };
-            header.AddRange(_fieldColumns);
-            _writer.WriteLine(string.Join(',', header.Select(Escape)));
-            _writer.Flush();
-        }
+        _isReplay = isReplay;
+        _recordClears = recordClears;
     }
 
     public async ValueTask EmitAsync(CaptureRecord record, CancellationToken ct)
     {
-        if (_replayMode) return;
+        if (_isReplay())
+        {
+            if (!_loggedReplaySkip)
+            {
+                _loggedReplaySkip = true;
+                Console.Error.WriteLine($"CsvRecordSink: replay mode, '{_path}' will not be written.");
+            }
+            return;
+        }
         if (record.Kind == RecordKind.Cleared && !_recordClears) return;
 
         var row = new List<string>
@@ -54,13 +51,31 @@ public sealed class CsvRecordSink : IRecordSink
 
         try
         {
-            await _writer!.WriteLineAsync(string.Join(',', row.Select(Escape)).AsMemory(), ct);
-            await _writer.FlushAsync(ct);
+            var writer = _writer ??= OpenWriter();
+            await writer.WriteLineAsync(string.Join(',', row.Select(Escape)).AsMemory(), ct);
+            await writer.FlushAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             Console.Error.WriteLine($"CsvRecordSink: write failed: {ex.Message}");
         }
+    }
+
+    private StreamWriter OpenWriter()
+    {
+        var dir = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        var isNew = !File.Exists(_path) || new FileInfo(_path).Length == 0;
+        var stream = new FileStream(_path, FileMode.Append, FileAccess.Write, FileShare.Read);
+        var writer = new StreamWriter(stream, Encoding.UTF8);
+        if (isNew)
+        {
+            var header = new List<string> { "timestamp", "plugin", "trigger", "kind", "rawText" };
+            header.AddRange(_fieldColumns);
+            writer.WriteLine(string.Join(',', header.Select(Escape)));
+            writer.Flush();
+        }
+        return writer;
     }
 
     private static string Escape(string field)

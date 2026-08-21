@@ -91,9 +91,34 @@ public static class GameCapturePluginHost
         {
             using var client = new CaptureClient(parsed.PipeName);
 
+            // Read once services exists below — a sink built from config needs it to know replay
+            // mode at emit time, but sinks have to be composed before PluginServices can be
+            // constructed with them. The lambda closes over the variable, not its (not yet assigned)
+            // value, so this is legal: nothing calls isReplay until well after services is set.
+            PluginServices? services = null;
+            bool IsReplay() => services?.Engine.ReplayMode ?? false;
+
             // The DelegateRecordSink adapter keeps the legacy RecordSink callback working as one more
-            // sink in the composite, so the replay harness path is unchanged.
-            List<IRecordSink> sinks = [.. options.Sinks ?? []];
+            // sink in the composite, so the replay harness path is unchanged. Explicit options.Sinks
+            // wins over config — the ordinary case for tests and embedding hosts.
+            List<IRecordSink> sinks = [];
+            try
+            {
+                if (options.Sinks is { } explicitSinks)
+                    sinks.AddRange(explicitSinks);
+                else
+                    foreach (var spec in config.Outputs)
+                        sinks.Add(SinkFactory.Build(spec, IsReplay, output, options.OverlayFactory));
+            }
+            catch (ArgumentException ex)
+            {
+                // A spec past the bad one never got built, but everything built before it (an
+                // HttpRecordSink's HttpClient, say) did — dispose those rather than leak them.
+                foreach (var built in sinks)
+                    await built.DisposeAsync();
+                Console.Error.WriteLine($"invalid output configuration: {ex.Message}");
+                return 1;
+            }
             if (options.RecordSink is { } legacy)
                 sinks.Add(new DelegateRecordSink(legacy));
 
@@ -102,7 +127,7 @@ public static class GameCapturePluginHost
             // recordSink is null here (not options.RecordSink): the legacy callback already reaches
             // Emit through the DelegateRecordSink added to sinks above — passing it a second time
             // would invoke it twice per record, once synchronously and once off the drain thread.
-            var services = new PluginServices(records, output, parsed.Verbose,
+            services = new PluginServices(records, output, parsed.Verbose,
                 config.SaveDebugFrames ? client.DumpFrameAsync : null,
                 client.ReadRoiAsync, recordSink: null, sink: new CompositeRecordSink(sinks));
             services.StartDraining(ct);

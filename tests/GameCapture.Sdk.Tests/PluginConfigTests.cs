@@ -24,6 +24,9 @@ public class PluginConfigTests : IDisposable
         /// <summary>Records that the hook ran, and what it was told the config's own path was.</summary>
         internal string? ResolvedAgainst { get; private set; }
 
+        internal static string ResolvePath(string path, string configPath)
+            => ResolveAgainstConfig(path, configPath);
+
         protected override void AfterLoad(string configPath) => ResolvedAgainst = configPath;
     }
 
@@ -161,5 +164,80 @@ public class PluginConfigTests : IDisposable
 
         protected override void AfterLoad(string configPath)
             => LedgerPath = Path.Combine(Path.GetDirectoryName(configPath)!, "resolved.jsonl");
+    }
+
+    [Fact]
+    public void FirstRun_WritesAnEmptyOutputsArray()
+    {
+        var path = Path_("config.json");
+        PluginConfig.Load<TestConfig>(path);
+
+        Assert.Contains("\"outputs\": []", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Outputs_BindFromJson()
+    {
+        var path = Path_("config.json");
+        File.WriteAllText(path, """
+            { "outputs": [ { "type": "json", "path": "records.jsonl", "recordClears": true } ] }
+            """);
+
+        var config = PluginConfig.Load<TestConfig>(path);
+
+        var spec = Assert.Single(config.Outputs);
+        Assert.Equal("json", spec.Type);
+        Assert.True(spec.RecordClears);
+        Assert.True(spec.DedupeOnChange); // default, not overridden by this JSON
+    }
+
+    [Fact]
+    public void Outputs_Null_NormalizesToEmpty()
+    {
+        var path = Path_("config.json");
+        File.WriteAllText(path, """{ "outputs": null }""");
+
+        var config = PluginConfig.Load<TestConfig>(path);
+
+        Assert.Empty(config.Outputs);
+    }
+
+    /// <summary>
+    /// Runs for every plugin regardless of whether its own <c>AfterLoad</c> override calls the base
+    /// implementation — <c>RefineryConfig.AfterLoad</c>, for one, does not.
+    /// </summary>
+    [Fact]
+    public void Outputs_RelativePath_ResolvesAgainstTheConfigDirectory()
+    {
+        var path = Path_("config.json");
+        File.WriteAllText(path, """
+            { "outputs": [ { "type": "json", "path": "records.jsonl" } ] }
+            """);
+
+        var config = PluginConfig.Load<TestConfig>(path);
+
+        Assert.Equal(Path.Combine(_dir, "records.jsonl"), config.Outputs[0].Path);
+    }
+
+    [Fact]
+    public void Outputs_RootedPath_IsUsedVerbatim()
+    {
+        var path = Path_("config.json");
+        var rooted = Path.Combine(Path.GetTempPath(), "elsewhere", "records.jsonl");
+        File.WriteAllText(path, $$"""
+            { "outputs": [ { "type": "json", "path": {{JsonSerializer.Serialize(rooted)}} } ] }
+            """);
+
+        var config = PluginConfig.Load<TestConfig>(path);
+
+        Assert.Equal(rooted, config.Outputs[0].Path);
+    }
+
+    [Fact]
+    public void ResolveAgainstConfig_RelativeConfigPath_UsesTheFullCurrentDirectory()
+    {
+        var resolved = TestConfig.ResolvePath("records.jsonl", "config.json");
+
+        Assert.Equal(Path.GetFullPath("records.jsonl"), resolved);
     }
 }

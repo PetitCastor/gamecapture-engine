@@ -14,7 +14,7 @@ public class JsonRecordSinkTests
         var path = TempPath();
         try
         {
-            await using (var sink = new JsonRecordSink(path, replayMode: false))
+            await using (var sink = new JsonRecordSink(path, isReplay: () => false))
             {
                 await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
                 await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "two"), CancellationToken.None);
@@ -39,7 +39,7 @@ public class JsonRecordSinkTests
             {
                 Fields = new Dictionary<string, string> { ["quantity"] = "42" },
             };
-            await using (var sink = new JsonRecordSink(path, replayMode: false))
+            await using (var sink = new JsonRecordSink(path, isReplay: () => false))
                 await sink.EmitAsync(record, CancellationToken.None);
 
             var line = await File.ReadAllTextAsync(path);
@@ -53,7 +53,7 @@ public class JsonRecordSinkTests
     public async Task EmitAsync_UnderReplayMode_NeverCreatesTheFile()
     {
         var path = TempPath();
-        await using var sink = new JsonRecordSink(path, replayMode: true);
+        await using var sink = new JsonRecordSink(path, isReplay: () => true);
         await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
 
         Assert.False(File.Exists(path));
@@ -65,7 +65,7 @@ public class JsonRecordSinkTests
         var path = TempPath();
         try
         {
-            await using (var sink = new JsonRecordSink(path, replayMode: false))
+            await using (var sink = new JsonRecordSink(path, isReplay: () => false))
             {
                 await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "") { Kind = RecordKind.Cleared }, CancellationToken.None);
             }
@@ -81,7 +81,7 @@ public class JsonRecordSinkTests
         var path = TempPath();
         try
         {
-            await using (var sink = new JsonRecordSink(path, replayMode: false, recordClears: true))
+            await using (var sink = new JsonRecordSink(path, isReplay: () => false, recordClears: true))
             {
                 await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "") { Kind = RecordKind.Cleared }, CancellationToken.None);
             }
@@ -98,12 +98,32 @@ public class JsonRecordSinkTests
         var path = TempPath();
         try
         {
-            var sink = new JsonRecordSink(path, replayMode: false);
+            var sink = new JsonRecordSink(path, isReplay: () => false);
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+
             var writerField = typeof(JsonRecordSink).GetField("_writer", BindingFlags.NonPublic | BindingFlags.Instance)!;
             ((StreamWriter)writerField.GetValue(sink)!).Dispose();
 
-            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "two"), CancellationToken.None);
         }
         finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task EmitAsync_OnOpenFailure_DoesNotThrow()
+    {
+        var parentFile = TempPath();
+        try
+        {
+            await File.WriteAllTextAsync(parentFile, "parent");
+            var path = Path.Combine(parentFile, "records.jsonl");
+
+            await using var sink = new JsonRecordSink(path, isReplay: () => false);
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+        }
+        finally
+        {
+            if (File.Exists(parentFile)) File.Delete(parentFile);
+        }
     }
 }

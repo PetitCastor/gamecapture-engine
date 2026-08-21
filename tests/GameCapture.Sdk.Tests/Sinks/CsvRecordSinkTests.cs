@@ -17,7 +17,7 @@ public class CsvRecordSinkTests
             {
                 Fields = new Dictionary<string, string> { ["b"] = "2", ["a"] = "1" },
             };
-            await using (var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: ["a", "b"]))
+            await using (var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: ["a", "b"]))
                 await sink.EmitAsync(record, CancellationToken.None);
 
             var lines = await File.ReadAllLinesAsync(path);
@@ -34,7 +34,7 @@ public class CsvRecordSinkTests
         try
         {
             var record = new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "has,comma and \"quote\"");
-            await using (var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: []))
+            await using (var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: []))
                 await sink.EmitAsync(record, CancellationToken.None);
 
             var lines = await File.ReadAllLinesAsync(path);
@@ -49,10 +49,10 @@ public class CsvRecordSinkTests
         var path = TempPath();
         try
         {
-            await using (var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: []))
+            await using (var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: []))
                 await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
 
-            await using (var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: []))
+            await using (var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: []))
                 await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "two"), CancellationToken.None);
 
             var lines = await File.ReadAllLinesAsync(path);
@@ -66,7 +66,7 @@ public class CsvRecordSinkTests
     public async Task EmitAsync_UnderReplayMode_NeverCreatesTheFile()
     {
         var path = TempPath();
-        await using var sink = new CsvRecordSink(path, replayMode: true, fieldColumns: []);
+        await using var sink = new CsvRecordSink(path, isReplay: () => true, fieldColumns: []);
         await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
 
         Assert.False(File.Exists(path));
@@ -80,7 +80,7 @@ public class CsvRecordSinkTests
         {
             await File.Create(path).DisposeAsync();
 
-            await using (var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: []))
+            await using (var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: []))
                 await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
 
             var lines = await File.ReadAllLinesAsync(path);
@@ -99,7 +99,7 @@ public class CsvRecordSinkTests
             {
                 Fields = new Dictionary<string, string> { ["a"] = "1" },
             };
-            await using (var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: ["a", "b"]))
+            await using (var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: ["a", "b"]))
                 await sink.EmitAsync(record, CancellationToken.None);
 
             var lines = await File.ReadAllLinesAsync(path);
@@ -114,12 +114,32 @@ public class CsvRecordSinkTests
         var path = TempPath();
         try
         {
-            var sink = new CsvRecordSink(path, replayMode: false, fieldColumns: []);
+            var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: []);
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+
             var writerField = typeof(CsvRecordSink).GetField("_writer", BindingFlags.NonPublic | BindingFlags.Instance)!;
             ((StreamWriter)writerField.GetValue(sink)!).Dispose();
 
-            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "two"), CancellationToken.None);
         }
         finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task EmitAsync_OnOpenFailure_DoesNotThrow()
+    {
+        var parentFile = TempPath();
+        try
+        {
+            await File.WriteAllTextAsync(parentFile, "parent");
+            var path = Path.Combine(parentFile, "records.csv");
+
+            await using var sink = new CsvRecordSink(path, isReplay: () => false, fieldColumns: []);
+            await sink.EmitAsync(new CaptureRecord(DateTime.Now, "refinery", TriggerKind.Auto, "one"), CancellationToken.None);
+        }
+        finally
+        {
+            if (File.Exists(parentFile)) File.Delete(parentFile);
+        }
     }
 }
