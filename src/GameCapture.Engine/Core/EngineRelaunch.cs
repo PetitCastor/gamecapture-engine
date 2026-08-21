@@ -14,6 +14,16 @@ public static class EngineRelaunch
     private static readonly string[] ValuedOverrides = ["--monitor", "--ocr-lang"];
 
     /// <summary>
+    /// Whether <paramref name="processPath"/> (typically <see cref="Environment.ProcessPath"/>) is the
+    /// engine's own apphost — the only case where relaunching it actually restarts the engine. Under
+    /// <c>dotnet run</c> the host is the shared <c>dotnet</c> muxer, and an empty/unknown path is not
+    /// launchable either; in both cases the caller must fall back to asking the operator to restart.
+    /// </summary>
+    public static bool IsSelfRelaunchable(string? processPath)
+        => !string.IsNullOrEmpty(processPath)
+           && !string.Equals(Path.GetFileNameWithoutExtension(processPath), "dotnet", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Returns <paramref name="args"/> with the <c>--monitor</c> / <c>--ocr-lang</c> override pairs
     /// stripped, so a freshly-persisted config value is not immediately re-overridden on restart.
     /// </summary>

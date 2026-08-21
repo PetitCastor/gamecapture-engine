@@ -21,7 +21,13 @@ public static class ConfigPatch
     /// </summary>
     public static string Apply(string json, IReadOnlyDictionary<string, object> changes)
     {
-        var root = JsonNode.Parse(json)?.AsObject() ?? new JsonObject();
+        // Parse to null (literal "null" or empty) starts from an empty object; a valid-but-non-object
+        // root (array/number/string — a corrupted or truncated write) is a clear, catchable error rather
+        // than the raw InvalidOperationException AsObject() would throw.
+        var parsed = JsonNode.Parse(json);
+        if (parsed is not null and not JsonObject)
+            throw new ArgumentException($"Config root must be a JSON object, was {parsed.GetValueKind()}.");
+        var root = parsed?.AsObject() ?? new JsonObject();
         foreach (var (key, value) in changes)
         {
             root[key] = value switch

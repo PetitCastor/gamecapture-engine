@@ -53,8 +53,11 @@ public sealed class SettingsForm : Form
         foreach (var tag in availableOcrLanguages)
             _ocrLanguage.Items.Add(tag);
         // A tag persisted earlier whose pack is no longer installed must still round-trip, not silently
-        // reset to auto — keep it selectable so OK preserves the operator's choice.
-        if (!string.IsNullOrEmpty(current.OcrLanguage) && !_ocrLanguage.Items.Contains(current.OcrLanguage))
+        // reset to auto — keep it selectable so OK preserves the operator's choice. Match case-insensitively
+        // (as the save-time validation does), so a tag differing only in case is not added as a duplicate.
+        var alreadyListed = _ocrLanguage.Items.Cast<string>()
+            .Any(t => string.Equals(t, current.OcrLanguage, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(current.OcrLanguage) && !alreadyListed)
             _ocrLanguage.Items.Add(current.OcrLanguage);
         _ocrLanguage.SelectedItem = string.IsNullOrEmpty(current.OcrLanguage) ? AutoLanguageLabel : current.OcrLanguage;
 

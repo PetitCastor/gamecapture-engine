@@ -61,4 +61,17 @@ public class EngineRelaunchTests
         var result = EngineRelaunch.StripPersistedOverrides(["--verbose", "--monitor"]);
         Assert.Equal(["--verbose"], result);
     }
+
+    [Theory]
+    [InlineData(@"C:\app\GameCapture.Engine.exe", true)]
+    [InlineData("/usr/local/bin/GameCapture.Engine", true)]
+    [InlineData(@"C:\Program Files\dotnet\dotnet.exe", false)] // `dotnet run` — muxer, not the engine
+    [InlineData("/usr/bin/dotnet", false)]
+    [InlineData("DOTNET.EXE", false)]                          // case-insensitive
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsSelfRelaunchable_recognizes_the_apphost_but_not_the_dotnet_muxer(string? path, bool expected)
+    {
+        Assert.Equal(expected, EngineRelaunch.IsSelfRelaunchable(path));
+    }
 }

@@ -64,4 +64,21 @@ public class ConfigPatchTests
         Assert.Throws<ArgumentException>(() =>
             ConfigPatch.Apply(Sample, new Dictionary<string, object> { ["scanIntervalMs"] = 1.5 }));
     }
+
+    [Fact]
+    public void Rejects_a_valid_but_non_object_root()
+    {
+        // A corrupted/truncated write can leave a valid JSON array/scalar; that must be a clear
+        // ArgumentException, not the raw InvalidOperationException AsObject() would throw.
+        Assert.Throws<ArgumentException>(() =>
+            ConfigPatch.Apply("[1, 2, 3]", new Dictionary<string, object> { ["monitorIndex"] = 0 }));
+    }
+
+    [Fact]
+    public void Null_root_starts_from_an_empty_object()
+    {
+        var result = ConfigPatch.Apply("null", new Dictionary<string, object> { ["monitorIndex"] = 3 });
+        var node = JsonNode.Parse(result)!.AsObject();
+        Assert.Equal(3, (int)node["monitorIndex"]!);
+    }
 }
