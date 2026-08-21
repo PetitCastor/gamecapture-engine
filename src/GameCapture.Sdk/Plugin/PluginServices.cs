@@ -75,6 +75,13 @@ internal sealed class PluginServices : IPluginServices
             ""));
     }
 
+    public void EmitCleared(DateTime timestamp, string plugin)
+    {
+        // Deliberately does NOT touch _records or _output — a clear is not a capture.
+        // SINK-02 wires the sink fan-out here.
+        _ = timestamp; _ = plugin;
+    }
+
     public Task<string?> DumpFrameAsync(RoiRect? roi, string prefix, CancellationToken ct)
         => _dumpFrame?.Invoke(roi, prefix, ct) ?? Task.FromResult<string?>(null);
 

@@ -67,6 +67,30 @@ public class FakePluginServicesTests
     }
 
     [Fact]
+    public void CaptureRecord_DefaultsToObservationWithNoFields()
+    {
+        var record = new CaptureRecord(DateTime.Now, "tracker", TriggerKind.Auto, "raw");
+
+        Assert.Equal(RecordKind.Observation, record.Kind);
+        Assert.Null(record.Fields);
+    }
+
+    [Fact]
+    public void EmitCleared_RecordsIntoCleared_WithoutTouchingEmitted()
+    {
+        var services = new FakePluginServices();
+        var timestamp = DateTime.Now;
+
+        services.EmitCleared(timestamp, "tracker");
+
+        var cleared = Assert.Single(services.Cleared);
+        Assert.Equal(RecordKind.Cleared, cleared.Kind);
+        Assert.Equal("tracker", cleared.Plugin);
+        Assert.Equal(timestamp, cleared.Timestamp);
+        Assert.Empty(services.Emitted);
+    }
+
+    [Fact]
     public void Engine_IsSettable()
     {
         var services = new FakePluginServices();
