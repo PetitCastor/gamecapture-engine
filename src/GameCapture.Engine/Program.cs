@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Windows.Forms;
 using GameCapture.Engine;
 using GameCapture.Engine.Metrics;
 using GameCapture.Engine.Tray;
@@ -9,7 +11,8 @@ using var sink = new ConsoleSink();
 
 sink.WriteLine("=== GameCapture — Capture Engine ===");
 
-var config = EngineConfig.Load(Path.Combine(AppContext.BaseDirectory, "engine-config.json"));
+var configPath = Path.Combine(AppContext.BaseDirectory, "engine-config.json");
+var config = EngineConfig.Load(configPath);
 
 // CLI: --pipe <name>, --ocr-lang <bcp47>, --monitor <index> (each overrides config),
 //      --replay <dir> (feed saved PNGs through the engine instead of live capture),
@@ -125,6 +128,10 @@ catch (InvalidOperationException ex)
 IFrameSource source;
 string captureLine;
 
+// Populated only on the live-capture path; feeds the tray's monitor submenu.
+IReadOnlyList<string> monitorLabels = [];
+var currentMonitorIndex = 0;
+
 if (videoPath is not null)
 {
     var effectiveFps = videoFps ?? 1000.0 / config.ScanIntervalMs;
@@ -186,6 +193,11 @@ else
 
     source = new LiveFrameSource(capture);
     captureLine = $"Capturing: [{monitorIndex}] {monitor.DeviceName} {monitor.Width}x{monitor.Height}";
+
+    monitorLabels = monitors
+        .Select((m, i) => $"[{i}] {m.DeviceName} {m.Width}x{m.Height}{(m.IsPrimary ? " (primary)" : "")}")
+        .ToList();
+    currentMonitorIndex = monitorIndex;
 }
 
 await using var engine = EngineHost.Create(pipeName, config, ocr, source, sink, verbose);
@@ -218,6 +230,12 @@ Console.CancelKeyPress += (_, e) =>
     e.Cancel = true;
     cts.Cancel();
 };
+
+// Set by a tray monitor/settings change (on the tray STA thread): the new value is persisted to
+// config, then the process relaunches so it loads cleanly. Deferred to after StopAsync so the pipe
+// is released before the replacement instance tries to bind it. Written/read across threads via
+// Volatile so the main thread's post-cancellation read is guaranteed to see the tray thread's write.
+var restartRequested = false;
 
 HotkeyListener? hotkey = null;
 MetricsReporter? metrics = null;
@@ -261,11 +279,58 @@ try
 
     if (livePaced && config.TrayEnabled)
     {
+        // Persist only the changed keys straight to disk — never mutate the live `config`, which the
+        // gRPC service and other running components read from — then trigger the restart that applies
+        // them. If the write fails, surface it and leave the engine running rather than half-applying.
+        void PersistAndRestart(IReadOnlyDictionary<string, object> changes)
+        {
+            try
+            {
+                File.WriteAllText(configPath, ConfigPatch.Apply(File.ReadAllText(configPath), changes));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Could not save settings:\n{ex.Message}",
+                    "GameCapture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            Volatile.Write(ref restartRequested, true);
+            cts.Cancel();
+        }
+
+        var controls = new TrayControls(
+            monitorLabels,
+            currentMonitorIndex,
+            new EngineSettings(config.OutputDir, config.OcrLanguage, config.ScanIntervalMs),
+            OcrPipeline.AvailableLanguageTags,
+            OnSelectMonitor: index =>
+                PersistAndRestart(new Dictionary<string, object> { ["monitorIndex"] = index }),
+            OnSaveSettings: settings =>
+            {
+                // Guard the one field that can kill startup: an OCR tag whose pack is not installed
+                // makes the relaunched process throw in OcrPipeline's ctor and exit before the tray
+                // exists — unrecoverable without hand-editing the config. Fall back to auto instead.
+                var language = settings.OcrLanguage;
+                if (language.Length > 0 &&
+                    !OcrPipeline.AvailableLanguageTags.Contains(language, StringComparer.OrdinalIgnoreCase))
+                    language = "";
+
+                PersistAndRestart(new Dictionary<string, object>
+                {
+                    ["outputDir"] = settings.OutputDir,
+                    ["ocrLanguage"] = language,
+                    ["scanIntervalMs"] = settings.ScanIntervalMs,
+                });
+            },
+            OnExit: cts.Cancel);
+
         tray = new TrayApplication(
             sink,
             engine.Status,
             config.MetricsEnabled,
-            TimeSpan.FromMilliseconds(Math.Max(250, config.MetricsIntervalMs)));
+            TimeSpan.FromMilliseconds(Math.Max(250, config.MetricsIntervalMs)),
+            controls);
         tray.Start();
         // Feed the same sample stream the console status bar uses; the tray never ticks its own
         // sampler (MetricsSampler is stateful and single-threaded by contract).
@@ -286,4 +351,24 @@ await engine.StopAsync();
 
 sink.WriteLine();
 sink.WriteLine($"Engine stopped after {engine.Status.Snapshot().FrameSeq} frame(s).");
+
+// A tray monitor/settings change has been persisted; the pipe is now released, so relaunch the
+// same run (minus the CLI overrides the config change supersedes) to apply it.
+if (Volatile.Read(ref restartRequested))
+{
+    if (Environment.ProcessPath is { } exe)
+    {
+        var psi = new ProcessStartInfo { FileName = exe, UseShellExecute = false };
+        foreach (var arg in EngineRelaunch.StripPersistedOverrides(args))
+            psi.ArgumentList.Add(arg);
+
+        sink.WriteLine("Restarting to apply settings…");
+        Process.Start(psi);
+    }
+    else
+    {
+        sink.WriteLine("Could not determine the engine executable path; restart manually to apply the change.");
+    }
+}
+
 return 0;
