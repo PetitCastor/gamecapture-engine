@@ -1,23 +1,24 @@
 # Compatibility
 
 What version of what talks to what, across the split (`gamecapture-engine` ships the engine,
-`GameCapture.Contracts`, `GameCapture.Sdk`, `GameCapture.Sdk.Testing`, and the plugin template;
+`GameCapture.Contracts`, `GameCapture.Sdk`, `GameCapture.Sdk.Testing`, `GameCapture.Sdk.Overlay`,
+and the plugin template;
 `gamecapture-plugins` consumes them). See [`docs/PROTOCOL.md`](PROTOCOL.md#version-policy) for how
 the protocol integer itself is governed — this doc is the release-facing matrix and the rules for
 bumping each of the three version axes.
 
 ## Matrix
 
-| Protocol | Engine | SDK / Contracts / Sdk.Testing | Notes |
+| Protocol | Engine | SDK / Contracts / Sdk.Testing / Sdk.Overlay / Plugin.Template | Notes |
 | --- | --- | --- | --- |
-| 1 | v1.0.0+ | 1.0.0+ | First published set, tagged from `gamecapture-engine` itself — not this mono-repo, which never publishes a `v1.0.0`. |
+| 1 | v1.0.0+ | v1.0.0+ (`Sdk.Overlay`: v1.1.0+) | First published set, tagged from `gamecapture-engine` itself — not this mono-repo, which never publishes a `v1.0.0`. The v1.1.0 output-sinks train is additive: `CaptureRecord.Kind`/`Fields`, JSON/CSV/HTTP outputs, and the new opt-in `GameCapture.Sdk.Overlay` package. No `capture.proto` edit: protocol remains 1. |
 
 A new row is added whenever protocol `Min` or `Current` moves (see below); package version bumps
 that don't touch the protocol integer extend the existing row's floor instead of adding one.
 
 ## Rules
 
-- **SDK/Contracts/Sdk.Testing minor or patch bump is always safe.** The plugin template pins
+- **SDK/Contracts/Sdk.Testing/Sdk.Overlay minor or patch bump is always safe.** The plugin template pins
   `Version="1.*"` (`templates/gamecapture-plugin/.template.config/template.json`'s `SdkVersion`
   symbol), so a plugin picks up new minors on its next restore with no source change required.
 - **SDK/Contracts major bump means plugin source changes are expected.** Treat it like any other
@@ -38,8 +39,9 @@ that don't touch the protocol integer extend the existing row's floor instead of
 ## Release checklist
 
 1. Tag the release in the repo that owns what changed (`gamecapture-engine` for engine/SDK/Contracts/
-   Sdk.Testing/template; plugin releases are the plugins repo's own tags and don't get a matrix row).
+   Sdk.Testing/Sdk.Overlay/template; plugin releases are the plugins repo's own tags and don't get a matrix row).
 2. If the tag moved `ProtocolVersion.Current` or `Min`, add or update the matrix row above in the
    same PR as the version bump — not after.
 3. Verify the row: the tagged engine's `GetStatus` advertises the range the row claims, and the
-   tagged SDK/Contracts/Sdk.Testing packages on nuget.org are the versions the row claims.
+   tagged SDK/Contracts/Sdk.Testing/Sdk.Overlay/template packages on nuget.org are the versions the
+   row claims.

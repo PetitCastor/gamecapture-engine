@@ -43,13 +43,15 @@ jobs:
       - name: Test
         run: dotnet test GameCaptureEngine.slnx --no-build -c Release --verbosity normal
 
-      - name: Pack
+      # The solution contains every library package on the train, including the opt-in overlay:
+      # Contracts, Sdk, Sdk.Testing, and Sdk.Overlay. The template is packed separately below.
+      - name: Pack library packages
         run: dotnet pack GameCaptureEngine.slnx --no-build -c Release -o packages
 
       # Not part of GameCaptureEngine.slnx by design (it must never join the main build,
       # or its EnableDefaultItems=false untouched-content model breaks), so the slnx pack above
       # never sees it. Packed separately, into the same output dir, so the push steps below pick
-      # it up alongside the other three package IDs without a change to their globs.
+      # it up alongside the other four package IDs without a change to their globs.
       - name: Pack template
         run: dotnet pack templates/GameCapture.Plugin.Template.csproj -c Release -o packages
 
