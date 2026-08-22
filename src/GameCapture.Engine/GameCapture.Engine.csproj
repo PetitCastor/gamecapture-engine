@@ -27,7 +27,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="engine-config.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

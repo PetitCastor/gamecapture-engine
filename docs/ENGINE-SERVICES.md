@@ -139,7 +139,7 @@ replay corpus without a raw frame ever crossing the boundary
   to `"dump"` (`CaptureGrpcService.cs:22-23,301-312`).
 - **Output dir ownership**: always `EngineConfig.OutputDir` (`src/GameCapture.Engine/Core/EngineConfig.cs:19`)
   — the engine's own config, never anything the client supplies directly. Relative paths in
-  `engine-config.json` resolve against the config file's own directory (`EngineConfig.Load`,
+  `%LOCALAPPDATA%\GameCapture\engine-config.json` resolves relative paths against the config file's own directory (`EngineConfig.Load`,
   `EngineConfig.cs:51-69`).
 - **Returns an engine-local path**: `DumpFrameResponse.path` is the absolute path *on the machine
   running the engine* — meaningful to a human or a same-machine corpus copy, not something a
