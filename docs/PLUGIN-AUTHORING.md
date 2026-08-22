@@ -11,6 +11,7 @@ and tested outside this repository against the real SDK — see [§8](#8-cold-st
 - [1. Prerequisites](#1-prerequisites)
 - [2. Creating the project](#2-creating-the-project)
 - [3. Anatomy of a plugin](#3-anatomy-of-a-plugin)
+- [Outputs: sinks](#outputs-sinks)
 - [4. ROIs: space, scale, calibration](#4-rois-space-scale-calibration)
 - [5. Error handling](#5-error-handling)
 - [6. Session events](#6-session-events)
@@ -31,7 +32,8 @@ and tested outside this repository against the real SDK — see [§8](#8-cold-st
   language pack installed; replaying a corpus needs the same, but no game. Note where the exe lands
   — parity tests need `GAMECAPTURE_ENGINE_PATH` pointed at it ([§7](#7-testing)).
 - **The packages, from nuget.org.** `GameCapture.Sdk`, `GameCapture.Contracts`, and
-  `GameCapture.Sdk.Testing` restore like any other dependency; the template
+  `GameCapture.Sdk.Testing` restore like any other dependency; the opt-in
+  `GameCapture.Sdk.Overlay` package is only needed for a desktop overlay. The template
   ([§2](#2-creating-the-project)) already references all three by package ID. No clone of this
   repository is involved in writing a plugin — clone it only to work on the engine itself, or to
   test against an unreleased SDK ([§2](#2-creating-the-project)).
@@ -53,7 +55,7 @@ class to rename and fill in — [§3](#3-anatomy-of-a-plugin) picks up from here
 specific `GameCapture.Sdk`/`.Contracts`/`.Sdk.Testing` version.
 
 **Testing against an unreleased SDK** (an engine change not yet published) is the one case that
-needs a clone: pack the four projects into a local feed, add that feed as a source scoped to the new
+needs a clone: pack the five projects into a local feed, add that feed as a source scoped to the new
 project (not the machine-wide config `dotnet nuget add source` mutates without `--configfile`), and
 pin the instantiated project at the packed prerelease with `--SdkVersion`:
 
@@ -61,6 +63,7 @@ pin the instantiated project at the packed prerelease with `--SdkVersion`:
 dotnet pack src/GameCapture.Contracts -c Release -o feed
 dotnet pack src/GameCapture.Sdk -c Release -o feed
 dotnet pack src/GameCapture.Sdk.Testing -c Release -o feed
+dotnet pack src/GameCapture.Sdk.Overlay -c Release -o feed
 dotnet pack templates/GameCapture.Plugin.Template.csproj -c Release -o feed
 
 dotnet new install feed/GameCapture.Plugin.Template.*.nupkg
@@ -70,9 +73,12 @@ dotnet new nugetconfig -o MyPlugin
 dotnet nuget add source <full path to feed> --name local --configfile MyPlugin/nuget.config
 ```
 
-`.github/workflows/ci.yml`'s `template-guard` job runs this same recipe on every PR (the anti-rot
-guard for the template itself: instantiate, build, test); read it for the working detail, including
-the `GameCapture.Sdk.Testing` name collision to filter out of the `GameCapture.Sdk.*.nupkg` glob.
+`.github/workflows/ci.yml`'s `template-guard` job runs the Contracts/SDK/SDK.Testing/template portion
+of this recipe on every PR (the anti-rot guard for the template itself: instantiate, build, test).
+It deliberately does not pack the optional overlay because the generated template does not reference
+it; pack the overlay as shown above when testing it from a local feed. Read the workflow for the
+working detail, including the `GameCapture.Sdk.Testing` name collision filtered from the
+`GameCapture.Sdk.*.nupkg` glob.
 
 Setting the same project up by hand, without the template, is
 [Appendix: manual project setup](#appendix-manual-project-setup).
@@ -208,6 +214,73 @@ What the plugin gets back, through `ctx.Services` (`IPluginServices`):
   clients, `ScanInterval`, and `ReplayMode`. **A plugin that writes anywhere persistent must branch
   on `ReplayMode`** — a corpus run must not append to a real ledger.
 
+## Outputs: sinks
+
+`IPluginOutput` remains the host's text console: use `Log` and `LogVerbose` for lines a person
+running the plugin should read. A sink is different: it receives `CaptureRecord` values after a
+plugin calls `Emit` or `EmitCleared`, off the tick thread, for persistence, integration, or display.
+
+Every record has a timestamp, plugin name, trigger, and `RawText`. Its `Kind` is `Observation` by
+default; `Cleared` says the tracked value disappeared and deliberately carries no payload. Optional
+`Fields` are named strings for structured sinks: JSON and HTTP add them as properties, CSV writes
+only the configured column names, and an overlay template can interpolate them as `{fieldName}`.
+
+Add an `outputs` array to the plugin's `config.json`. Relative file paths resolve from the directory
+that contains that config file, not from the shell's working directory:
+
+```json
+{
+  "pipeName": "GameCapture.Engine",
+  "saveDebugFrames": false,
+  "outputs": [
+    {
+      "type": "json",
+      "path": "captures/records.jsonl",
+      "dedupeOnChange": true,
+      "recordClears": true
+    },
+    {
+      "type": "csv",
+      "path": "captures/records.csv",
+      "columns": ["mission", "status"],
+      "dedupeOnChange": false
+    },
+    {
+      "type": "http",
+      "url": "https://example.invalid/gamecapture/records",
+      "timeoutSeconds": 5
+    },
+    {
+      "type": "overlay",
+      "overlay": {
+        "offsetY": 36,
+        "template": "{mission}: {status}",
+        "lingerMs": 5000,
+        "foregroundColor": "#FFFFFF",
+        "backgroundColor": "#111827"
+      }
+    }
+  ]
+}
+```
+
+The built-in `json` sink appends JSON Lines, `csv` writes a header followed by CSV rows, and `http`
+POSTs one JSON object per record. `dedupeOnChange` defaults to `true` for those three sinks;
+`recordClears` defaults to `false`. Their replay guarantee is strict: while `Engine.ReplayMode` is
+true, they do not create files or make HTTP requests, so corpus runs cannot touch a real ledger or
+endpoint.
+
+The `overlay` sink is supplied by the separate, opt-in `GameCapture.Sdk.Overlay` package. Reference
+that package and register `new OverlaySinkFactory()` through `PluginHostOptions.OverlayFactory`; an
+unregistered overlay entry is a no-op, preserving portability for plugins that do not reference it.
+Its `overlay` keys include `offsetX`/`offsetY`, `width`/`height`, colours, `template`, and `lingerMs`;
+use numeric `anchor` (`0` for the default top-centre, `1` for custom `x`/`y`) when positioning must
+be explicit. It is a topmost, click-through, no-activate Windows window: it never inspects the game
+process and never requires elevation. A `Cleared` record hides it; `lingerMs: 0` disables auto-hide.
+
+Unlike the file and HTTP sinks, the overlay receives every observation and clear so the on-screen
+state stays current; it is intentionally not change-deduplicated.
+
 ## 4. ROIs: space, scale, calibration
 
 **Reference space is 2560x1440, always.** A ROI is declared against that grid and the *engine*
@@ -342,6 +415,8 @@ nothing to set up by hand. Building a test project from scratch (no template ava
 **Unit: `TickDataBuilder` + `FakePluginServices`.** The builder produces a `TickData` the way the
 engine would have sent it (through the SDK's own wire mapping), so a tick that could never arrive on
 the wire cannot pass a test. `FakePluginServices` records emissions and logs instead of printing.
+For a host test, pass `FakeRecordSink` through the public `PluginHostOptions.Sinks` list; its public
+`Received` list captures every delivered `CaptureRecord`, including clears.
 
 ```csharp
 using GameCapture.Sdk;
@@ -387,7 +462,7 @@ The builder covers every shape a tick can carry: `.Text(id, text)`, `.Detailed(i
 `OcrLineSpec` converts implicitly from a string, or is built from `OcrWordSpec`s when the parser
 reads word geometry), `.Pixels(id, b, g, r, w, h)`, `.Errored(id, message)`, plus `.Manual()`,
 `.FrameSeq(n)` for gap tests, and `.At(instant)` to separate frame time from processing time.
-`FakePluginServices` exposes `Emitted`, `Logs`, `VerboseLogs`, a settable `Engine`, and
+`FakePluginServices` exposes `Emitted`, `Cleared`, `Logs`, `VerboseLogs`, a settable `Engine`, and
 `DumpFrameHandler` / `ReadRoiHandler` for the calibration paths.
 
 **Parity: `ReplayHarness`.** This spawns a real `GameCapture.Engine.exe` replaying a PNG corpus and drives
@@ -489,8 +564,9 @@ disagree: check `config.json` against `engine-config.json`, or pass `--pipe <nam
 
 ## 9. Config, CLI, and compatibility
 
-**Config.** `PluginConfig` carries the two settings every plugin has — `pipeName` (must match the
-engine's) and `saveDebugFrames`. Derive to add your own; `PluginConfig.Load<T>(path)` writes a
+**Config.** `PluginConfig` carries the three settings every plugin has — `pipeName` (must match the
+engine's), `saveDebugFrames`, and `outputs` ([Outputs: sinks](#outputs-sinks)). Derive to add your
+own; `PluginConfig.Load<T>(path)` writes a
 defaults file on first run so settings are discoverable without documentation, and `AfterLoad` is
 the hook for anything that must resolve relative to the config file's own location (a ledger path,
 typically). Hand the loaded instance to the host so it does not re-read the file:
