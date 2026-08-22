@@ -38,8 +38,10 @@ that don't touch the protocol integer extend the existing row's floor instead of
 
 ## Release checklist
 
-1. Tag the release in the repo that owns what changed (`gamecapture-engine` for engine/SDK/Contracts/
-   Sdk.Testing/Sdk.Overlay/template; plugin releases are the plugins repo's own tags and don't get a matrix row).
+1. Merge the release PR into `master` in the repo that owns what changed (`gamecapture-engine` for
+   engine/SDK/Contracts/Sdk.Testing/Sdk.Overlay/template; plugin releases are the plugins repo's own
+   releases and don't get a matrix row). The engine release workflow increments the patch version from
+   the latest stable `vX.Y.Z` tag, creates that tag, and publishes the compatible artifact set.
 2. If the tag moved `ProtocolVersion.Current` or `Min`, add or update the matrix row above in the
    same PR as the version bump — not after.
 3. Verify the row: the tagged engine's `GetStatus` advertises the range the row claims, and the

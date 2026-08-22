@@ -2,10 +2,13 @@ name: Release
 
 on:
   push:
-    # [0-9]*.[0-9]*.[0-9]* rather than bare v*: MinVer can't parse v*, vNext, v1.0, etc. and falls
-    # back to 0.0.0-alpha.0 — a version that would then get packed and pushed to nuget.org, where it
-    # can never be deleted, only unlisted. Tightened to what MinVer actually accepts.
-    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+    branches: [master]
+
+# A queued merge must see the tag created by the preceding release before it computes its version.
+# Without serialization, two near-simultaneous merges can both select the same next patch version.
+concurrency:
+  group: release-master
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -20,10 +23,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Unshallow, and specifically for the tags: MinVer derives the version from the pushed
-          # tag itself now (the trigger IS the tag), but it still walks history to confirm there is
-          # nothing beyond it — a depth-1 clone carries no tags at all and MinVer falls back to
-          # 0.0.0-alpha.0.
+          # Unshallow so the version step can see the complete stable-tag history. A depth-1 clone
+          # carries no tags, leaving MinVer and the release-version calculation without the train's
+          # actual base version.
           fetch-depth: 0
 
       - name: Setup .NET
@@ -31,14 +33,32 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Full suite, same as ci.yml — the tag push is not itself proof the suite is green (a tag can
-      # be pushed from any commit), so release re-verifies rather than trusting the CI run that may
-      # have happened on a different ref.
+      # Every merge to master is a release. The workflow owns the tag so packages, the engine and
+      # the GitHub release all carry the same stable version. Pre-release tags are ignored: they are
+      # historical rehearsal tags and must not become the base for the next production patch.
+      - name: Compute next release version
+        shell: pwsh
+        run: |
+          $stableTags = git tag --list 'v*' |
+            Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
+            ForEach-Object { [pscustomobject]@{ Tag = $_; Version = [version]($_.Substring(1)) } } |
+            Sort-Object Version
+          $latest = $stableTags | Select-Object -Last 1
+          if (-not $latest) {
+            throw 'No stable vX.Y.Z tag exists; seed the release train before enabling automatic releases.'
+          }
+          $next = [version]::new($latest.Version.Major, $latest.Version.Minor, $latest.Version.Build + 1)
+          "RELEASE_VERSION=$next" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_TAG=v$next" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Releasing $next from $($latest.Tag) at $env:GITHUB_SHA"
+
+      # Full suite, same as ci.yml — the push to master is the release event, but this job still
+      # re-verifies the merge commit rather than trusting a PR run from a different ref.
       - name: Restore
         run: dotnet restore GameCaptureEngine.slnx
 
       - name: Build
-        run: dotnet build GameCaptureEngine.slnx --no-restore -c Release
+        run: dotnet build GameCaptureEngine.slnx --no-restore -c Release "-p:MinVerVersionOverride=$env:RELEASE_VERSION"
 
       - name: Test
         run: dotnet test GameCaptureEngine.slnx --no-build -c Release --verbosity normal
@@ -46,20 +66,20 @@ jobs:
       # The solution contains every library package on the train, including the opt-in overlay:
       # Contracts, Sdk, Sdk.Testing, and Sdk.Overlay. The template is packed separately below.
       - name: Pack library packages
-        run: dotnet pack GameCaptureEngine.slnx --no-build -c Release -o packages
+        run: dotnet pack GameCaptureEngine.slnx --no-build -c Release -o packages "-p:MinVerVersionOverride=$env:RELEASE_VERSION"
 
       # Not part of GameCaptureEngine.slnx by design (it must never join the main build,
       # or its EnableDefaultItems=false untouched-content model breaks), so the slnx pack above
       # never sees it. Packed separately, into the same output dir, so the push steps below pick
       # it up alongside the other four package IDs without a change to their globs.
       - name: Pack template
-        run: dotnet pack templates/GameCapture.Plugin.Template.csproj -c Release -o packages
+        run: dotnet pack templates/GameCapture.Plugin.Template.csproj -c Release -o packages "-p:MinVerVersionOverride=$env:RELEASE_VERSION"
 
-      # MinVerVersionOverride is gone: unlike the old auto-increment trigger, the tag this release is
-      # named for already exists (it's what triggered the run), so MinVer reads it directly off
-      # history without help.
+      # The release tag is created after the artifacts are built, so MinVer needs the explicit
+      # version override for this merge commit. The tag then makes that version reproducible for
+      # future checkouts and becomes the base for the next merge.
       - name: Publish GameCapture.Engine
-        run: dotnet publish src/GameCapture.Engine -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish/engine
+        run: dotnet publish src/GameCapture.Engine -c Release -r win-x64 --self-contained -p:PublishSingleFile=true "-p:MinVerVersionOverride=$env:RELEASE_VERSION" -o publish/engine
 
       # Named files, not `publish/engine/*`: the publish output carries more than a release should.
       # PublishSingleFile bundles the managed assemblies into the exe but leaves .pdb files loose,
@@ -75,7 +95,7 @@ jobs:
           $files = 'publish/engine/GameCapture.Engine.exe', 'publish/engine/engine-config.json'
           $missing = $files | Where-Object { -not (Test-Path $_) }
           if ($missing) { throw "Missing from publish output: $($missing -join ', ')" }
-          Compress-Archive -Path $files -DestinationPath "GameCapture.Engine-${{ github.ref_name }}-win-x64.zip"
+          Compress-Archive -Path $files -DestinationPath "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip"
 
       # GitHub release created BEFORE the NuGet push, and named explicitly rather than via a glob:
       # windows-latest's default shell is pwsh, and pwsh does not glob-expand arguments to native
@@ -88,7 +108,7 @@ jobs:
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create ${{ github.ref_name }} "GameCapture.Engine-${{ github.ref_name }}-win-x64.zip" --generate-notes
+        run: gh release create "${env:RELEASE_TAG}" "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip" --title "${env:RELEASE_TAG}" --generate-notes --target "${{ github.sha }}"
 
       # OIDC → short-lived API key, scoped to this job only. No NUGET_API_KEY secret exists anywhere
       # in this repo: nothing long-lived to rotate or leak.
