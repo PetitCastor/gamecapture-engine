@@ -86,13 +86,14 @@ jobs:
       # GenerateDocumentationFile in the referenced libraries drops .xml next to them, and the
       # Microsoft.AspNetCore.App framework reference contributes aspnetcorev2_inprocess.dll (the IIS
       # in-process handler — never loaded by a Kestrel-on-named-pipes host, and not bundled because
-      # IncludeNativeLibrariesForSelfExtract is off). v1.0.0-rc.1 shipped all four. Listing the two
-      # files that belong in the zip means the release contents cannot drift with the publish layout;
-      # the Test-Path guard turns a rename or a dropped CopyToOutputDirectory into a failed release
-      # rather than a silently incomplete zip.
+      # IncludeNativeLibrariesForSelfExtract is off). The archive intentionally includes only the
+      # executable: engine-config.json is now user-local under %LOCALAPPDATA%, and EngineConfig
+      # creates the defaults on first launch. Listing the executable explicitly means the release
+      # contents cannot drift with the publish layout; the Test-Path guard turns a renamed or missing
+      # executable into a failed release rather than a silently incomplete zip.
       - name: Archive GameCapture.Engine
         run: |
-          $files = 'publish/engine/GameCapture.Engine.exe', 'publish/engine/engine-config.json'
+          $files = 'publish/engine/GameCapture.Engine.exe'
           $missing = $files | Where-Object { -not (Test-Path $_) }
           if ($missing) { throw "Missing from publish output: $($missing -join ', ')" }
           Compress-Archive -Path $files -DestinationPath "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip"
