@@ -103,4 +103,15 @@ public class PluginServicesSinkTests
         Assert.Same(record, Assert.Single(legacySeen));
         Assert.Single(sink.Received);
     }
+
+    [Fact]
+    public void EmitCleared_DefaultInterfaceMethod_PreservesOlderImplementations()
+    {
+        IPluginServices services = new LegacyPluginServices();
+
+        var ex = Record.Exception(() => services.EmitCleared(DateTime.Now, "refinery"));
+
+        Assert.Null(ex);
+        Assert.Empty(((LegacyPluginServices)services).Emitted);
+    }
 }

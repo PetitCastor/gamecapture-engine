@@ -22,7 +22,11 @@ public interface IPluginServices
 
     /// <summary>Signals that the tracked reading is no longer on screen. Fans to sinks (SINK-02);
     /// not counted as a capture, not printed as a capture block.</summary>
-    void EmitCleared(DateTime timestamp, string plugin);
+    /// <remarks>
+    /// Default no-op for source and binary compatibility: existing plugin test doubles may implement
+    /// an older SDK surface and know nothing about clear notifications.
+    /// </remarks>
+    void EmitCleared(DateTime timestamp, string plugin) { }
 
     /// <summary>
     /// Asks the engine to save its most recent frame as a PNG and hands back the absolute path, or
