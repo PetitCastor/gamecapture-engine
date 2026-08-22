@@ -11,7 +11,7 @@ using var sink = new ConsoleSink();
 
 sink.WriteLine("=== GameCapture — Capture Engine ===");
 
-var configPath = Path.Combine(AppContext.BaseDirectory, "engine-config.json");
+var configPath = EngineConfig.GetDefaultPath();
 var config = EngineConfig.Load(configPath);
 
 // CLI: --pipe <name>, --ocr-lang <bcp47>, --monitor <index> (each overrides config),

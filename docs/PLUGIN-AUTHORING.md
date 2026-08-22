@@ -520,9 +520,9 @@ CI does the same thing, pinning it to the exact artifact it downloaded or built.
 frames measures in seconds, so a fired timeout means something is stuck.
 
 **Capturing the corpus** is a live, in-game step: run the engine with `--save-frames`, press the
-configured hotkey (`engine-config.json`'s `hotkey`, default `Ctrl+Shift+F12`, logged at startup) at
+configured hotkey (`%LOCALAPPDATA%\GameCapture\engine-config.json`'s `hotkey`, default `Ctrl+Shift+F12`, logged at startup) at
 each stage worth a frame. Each press writes one full-frame PNG into the engine's own output
-directory — `engine-config.json`'s `outputDir`, `captures/` by default, resolved relative to the
+directory — `%LOCALAPPDATA%\GameCapture\engine-config.json`'s `outputDir`, `captures/` by default, resolved relative to the
 config file and printed as `Dumps:` on startup. Copy those PNGs into `Fixtures/Replay/<name>/` and
 copy them to the test output:
 
@@ -560,7 +560,7 @@ dotnet run --project MyPlugin -- --verbose         # terminal 2
 
 The plugin prints its banner, `waiting for engine on pipe '<name>'...`, and then — once connected —
 the engine version, frame size, cadence, and its own ROI ids. If it waits forever, the pipe names
-disagree: check `config.json` against `engine-config.json`, or pass `--pipe <name>` to both.
+disagree: check `config.json` against `%LOCALAPPDATA%\GameCapture\engine-config.json`, or pass `--pipe <name>` to both.
 
 ## 9. Config, CLI, and compatibility
 

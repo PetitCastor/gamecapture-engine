@@ -18,7 +18,7 @@ what each RPC actually does and every wire budget/constant, see
 | | |
 | --- | --- |
 | Endpoint | Windows named pipe, default `GameCapture.Engine` (`GameCapture.Contracts/PipeContract.cs`) |
-| Override | engine `--pipe <name>` / `engine-config.json`; each plugin's `config.json` must match |
+| Override | engine `--pipe <name>` / `%LOCALAPPDATA%\GameCapture\engine-config.json`; each plugin's `config.json` must match |
 | Protocol | gRPC over HTTP/2, prior knowledge (`GrpcHost.cs:38` forces `HttpProtocols.Http2`) |
 | Security | Plaintext. A pipe carries no TLS to negotiate with; it inherits the logon session's ACL, and the engine is a per-user process |
 | Connections | One channel per plugin process (`NamedPipeChannel.Create`), one `Track` stream per channel |

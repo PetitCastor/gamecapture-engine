@@ -10,6 +10,9 @@ namespace GameCapture.Engine;
 /// </summary>
 public sealed class EngineConfig
 {
+    private const string ConfigFileName = "engine-config.json";
+    private const string ConfigDirectoryName = "GameCapture";
+
     public string Hotkey { get; set; } = "Ctrl+Shift+F12";
 
     /// <summary>Index into the monitor list printed at startup (primary monitor is always index 0).</summary>
@@ -50,6 +53,13 @@ public sealed class EngineConfig
         WriteIndented = true,
     };
 
+    /// <summary>Returns the per-user path used by the engine's configuration.</summary>
+    public static string GetDefaultPath()
+        => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            ConfigDirectoryName,
+            ConfigFileName);
+
     /// <summary>
     /// Loads the config, writing a defaults file on first run so the settings are discoverable
     /// without documentation. Same contract as the monolith's ProbeConfig.Load.
@@ -60,6 +70,7 @@ public sealed class EngineConfig
         if (!File.Exists(path))
         {
             config = new EngineConfig();
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             File.WriteAllText(path, JsonSerializer.Serialize(config, JsonOptions));
         }
         else

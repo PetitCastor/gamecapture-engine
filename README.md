@@ -76,7 +76,7 @@ That writes the whole thing: `MyPlugin.csproj` (a `PackageReference` on `GameCap
 [Releases](https://github.com/PetitCastor/gamecapture-engine/releases) and run the self-contained
 exe, or run one from a clone (`dotnet run --project src/GameCapture.Engine`). Live capture needs
 Windows 10/11 with an OCR language pack. Both sides must agree on the pipe name — `pipeName` in the
-plugin's `config.json`, the engine's `engine-config.json`, or `--pipe <name>` passed to both.
+plugin's `config.json`, the engine's `%LOCALAPPDATA%\GameCapture\engine-config.json`, or `--pipe <name>` passed to both.
 
 **3. Fill in the plugin.** `IGameCapturePlugin` has three required members:
 
@@ -125,7 +125,7 @@ dotnet run --project src/GameCapture.Engine     # owns the screen
 
 The engine prints its pipe name, monitor, OCR language, and hotkey on startup. Ctrl+C ends it
 cleanly. Engine and plugin must agree on the pipe name — configured in
-`src/GameCapture.Engine/engine-config.json` and each plugin's `config.json`, or overridden on both
+`%LOCALAPPDATA%\GameCapture\engine-config.json` and each plugin's `config.json`, or overridden on both
 with `--pipe <name>`.
 
 Engine flags:
