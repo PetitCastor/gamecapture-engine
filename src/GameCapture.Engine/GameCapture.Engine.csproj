@@ -11,6 +11,9 @@
     <!-- Tray icon (GameCapture.Engine.Tray) hosts a WinForms NotifyIcon in-process. OutputType stays
          Exe, not WinExe: the engine keeps its console banner and the tray runs on its own STA thread. -->
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Explorer/taskbar icon for GameCapture.Engine.exe itself, distinct from the runtime tray icon
+         drawn by TrayIconFactory. Regenerate via scripts/generate_app_icon.py. -->
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- Hosts gRPC on Kestrel without switching to the Web SDK, which would drag in the whole
