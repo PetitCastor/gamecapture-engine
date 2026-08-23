@@ -5,10 +5,6 @@ using GameCapture.Engine;
 using GameCapture.Engine.Metrics;
 using GameCapture.Engine.Tray;
 
-// Before anything is printed: an installed/production run is tray-only, so the console window
-// comes down immediately unless a debugger is attached (the "debug locally" case).
-ConsoleWindowVisibility.HideUnlessDebugging();
-
 // First statement so every later write goes through it and disposal (status-bar erase,
 // cursor restore) is guaranteed on every return path.
 using var sink = new ConsoleSink();
@@ -356,6 +352,13 @@ try
         // sampler (MetricsSampler is stateful and single-threaded by contract).
         if (metrics is not null)
             metrics.Sampled += tray.OnMetrics;
+
+        // Only hide the console once the tray has actually taken over as the running UI. If tray
+        // startup itself failed (Session 0 / no interactive desktop — TrayApplication logs and
+        // disables itself rather than throwing) the console stays as the sole fallback UI instead of
+        // going dark with nothing left to observe or exit from.
+        if (tray.IsActive)
+            ConsoleWindowVisibility.HideUnlessDebugging();
     }
 
     await engine.RunScanAsync(cts.Token);

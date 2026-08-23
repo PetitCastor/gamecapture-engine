@@ -26,6 +26,15 @@ public sealed class TrayApplication : IDisposable
     private readonly ManualResetEventSlim _ready = new(false);
     private readonly FrameRateTracker _fps = new();
 
+    /// <summary>
+    /// Whether the tray icon is actually up and running. False until <see cref="Start"/> returns, and
+    /// stays false if setup threw (no interactive desktop — Session 0, some RDP configs) instead of
+    /// reaching the message loop. Callers that only want to strip other UI (e.g. hide the console) once
+    /// the tray is confirmed as its replacement should gate on this rather than assume <see cref="Start"/>
+    /// succeeding.
+    /// </summary>
+    public bool IsActive { get; private set; }
+
     private Thread? _thread;
     private NotifyIcon? _icon;
     private StatusForm? _form;
@@ -101,6 +110,7 @@ public sealed class TrayApplication : IDisposable
             _timer.Tick += (_, _) => Refresh();
             _timer.Start();
 
+            IsActive = true;
             _ready.Set();
             Application.Run(new ApplicationContext());
         }
