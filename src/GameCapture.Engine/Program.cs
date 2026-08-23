@@ -5,6 +5,10 @@ using GameCapture.Engine;
 using GameCapture.Engine.Metrics;
 using GameCapture.Engine.Tray;
 
+// Before anything is printed: an installed/production run is tray-only, so the console window
+// comes down immediately unless a debugger is attached (the "debug locally" case).
+ConsoleWindowVisibility.HideUnlessDebugging();
+
 // First statement so every later write goes through it and disposal (status-bar erase,
 // cursor restore) is guaranteed on every return path.
 using var sink = new ConsoleSink();
