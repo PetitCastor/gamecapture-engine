@@ -25,6 +25,12 @@ result or a per-ROI `error` (`ScanLoop.ReadOneAsync` never throws out of the tic
 `src/GameCapture.Engine/ScanLoop.cs`). A failing ROI never removes another ROI's result, for
 that client or any other client sharing the engine.
 
+When multiple subscriptions request equivalent work from the same frame, the engine performs
+that read once and clones the result under each client's chosen ROI id. Equivalence includes the
+mode, reference rectangle, and normalized OCR scale; pixel scale is ignored because pixel reads
+are always 1:1. Result order and per-client ids remain unchanged, and the cache is cleared after
+every tick so work and payloads are never reused across frames.
+
 The only thing a plugin *sends* on this stream past the initial `Hello` is a `RoiSetUpdate` — a
 **full replacement** of its subscribed set, idempotent, with an empty set a legitimate
 heartbeat-only state rather than "not ready" (`protos/capture.proto:77-80`; full rules in the Tick

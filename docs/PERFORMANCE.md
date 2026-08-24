@@ -49,3 +49,21 @@ Run the suite with:
 ```powershell
 dotnet run --project benchmarks/GameCapture.Engine.Benchmarks -c Release -- --job short
 ```
+
+## PR 8 — equivalent ROI processing
+
+PR 8 shares equivalent ROI work within one frame, while cloning the result for each requested ROI
+id and clearing the cache after every tick. The relevant benchmark class was run immediately
+before and after the change on the baseline machine with `ShortRun`:
+
+| Benchmark | Before | After | Delta |
+| --- | ---: | ---: | ---: |
+| Repeated equivalent ROI mean | 2.016 ms | 1.732 ms | -14.1% |
+| Repeated equivalent ROI allocated | 103.12 KB | 53.25 KB | -48.4% |
+| Unique ROI mean | 1.935 ms | 1.933 ms | -0.1% |
+| Unique ROI allocated | 103.12 KB | 103.11 KB | -0.01 KB |
+
+The repeated workload clears the improvement gate. The unique workload is unchanged within
+ShortRun noise; its 0.01 KB allocation difference is about 0.01%. The implementation retains no
+`RoiResult` instances or pixel payloads between ticks, and discards dictionary capacity after a
+one-off tick exceeds 256 unique reads.
