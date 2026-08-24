@@ -12,8 +12,11 @@ namespace GameCapture.Engine;
 /// </summary>
 internal sealed class SubscriptionTickProcessor
 {
+    private const int MaxRetainedReadKeys = 256;
+
     private readonly bool _replayMode;
     private readonly Func<SoftwareBitmap, RoiSpec, Task<RoiResult>> _readOneAsync;
+    private Dictionary<RoiReadKey, RoiResult> _readCache = [];
 
     public SubscriptionTickProcessor(
         FrameSourceMode sourceMode,
@@ -30,39 +33,70 @@ internal sealed class SubscriptionTickProcessor
         bool manual,
         CancellationToken ct)
     {
-        foreach (var client in clients)
+        _readCache.Clear();
+        try
         {
-            var tick = new TickResult
+            foreach (var client in clients)
             {
-                TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                FrameSeq = frameSeq,
-                FrameWidth = (uint)bitmap.PixelWidth,
-                FrameHeight = (uint)bitmap.PixelHeight,
-                Manual = manual,
-            };
-
-            foreach (var spec in client.Rois)
-                tick.Results.Add(await _readOneAsync(bitmap, spec));
-
-            var response = new TrackResponse { Tick = tick };
-            if (_replayMode)
-            {
-                // Backpressure: determinism first. Unlike the live TryWrite, this write can fail —
-                // a plugin that disposes its session (or dies) has its channel completed by the
-                // registry, and the throw would otherwise end the run for every client.
-                try
+                var tick = new TickResult
                 {
-                    await client.Out.Writer.WriteAsync(response, ct);
-                }
-                catch (ChannelClosedException)
+                    TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    FrameSeq = frameSeq,
+                    FrameWidth = (uint)bitmap.PixelWidth,
+                    FrameHeight = (uint)bitmap.PixelHeight,
+                    Manual = manual,
+                };
+
+                foreach (var spec in client.Rois)
                 {
-                    continue;
+                    var key = RoiReadKey.From(spec);
+                    if (_readCache.TryGetValue(key, out var cached))
+                    {
+                        // Protobuf messages are mutable. Each TickResult must own an independent
+                        // result even when the expensive bitmap/OCR work is shared, and each
+                        // client keeps its chosen id.
+                        var clone = cached.Clone();
+                        clone.RoiId = spec.Id;
+                        tick.Results.Add(clone);
+                    }
+                    else
+                    {
+                        var result = await _readOneAsync(bitmap, spec);
+                        _readCache.Add(key, result);
+                        tick.Results.Add(result);
+                    }
                 }
-            }
-            else
-            {
-                client.Out.Writer.TryWrite(response); // DropOldest handles overflow
+
+                var response = new TrackResponse { Tick = tick };
+                if (_replayMode)
+                {
+                    // Backpressure: determinism first. Unlike the live TryWrite, this write can fail —
+                    // a plugin that disposes its session (or dies) has its channel completed by the
+                    // registry, and the throw would otherwise end the run for every client.
+                    try
+                    {
+                        await client.Out.Writer.WriteAsync(response, ct);
+                    }
+                    catch (ChannelClosedException)
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    client.Out.Writer.TryWrite(response); // DropOldest handles overflow
+                }
             }
         }
+        finally
+        {
+            // Results may own large pixel payloads. Never retain a completed frame's messages
+            // while the engine is idle, or a hostile one-off ROI set's oversized capacity.
+            var releaseCapacity = _readCache.Count > MaxRetainedReadKeys;
+            _readCache.Clear();
+            if (releaseCapacity)
+                _readCache = [];
+        }
     }
+
 }
