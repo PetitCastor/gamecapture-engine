@@ -1,6 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
 using GameCapture.Contracts.Proto;
-using Google.Protobuf;
 
 // The proto namespace also declares a RectF (the wire mirror of the local one), so both names
 // are in scope here. Alias them apart rather than fully qualifying at every use site.
@@ -10,11 +9,11 @@ using LocalRectF = GameCapture.Contracts.RectF;
 namespace GameCapture.Contracts;
 
 /// <summary>
-/// The ONLY place proto types are converted to and from the pure shared types. Keeping the
-/// conversion in one file means the engine, the SDK and the plugins all agree on the wire
-/// semantics by construction — in particular that a <see cref="RoiResult"/>'s frame_rect is
-/// what <see cref="OcrRegionResult"/> treats as its ROI origin, so ToFramePoint keeps
-/// yielding real frame pixels on the far side of the boundary.
+/// The public facade for converting proto types to and from the pure shared types. Keeping the
+/// boundary centralized means the engine, the SDK and the plugins all agree on the wire semantics
+/// by construction — in particular that a <see cref="RoiResult"/>'s frame_rect is what
+/// <see cref="OcrRegionResult"/> treats as its ROI origin, so ToFramePoint keeps yielding real
+/// frame pixels on the far side of the boundary.
 /// </summary>
 public static class ProtoMapping
 {
@@ -72,19 +71,7 @@ public static class ProtoMapping
     /// </exception>
     public static OcrRegionResult ToOcrRegionResult(this RoiResult r)
     {
-        ThrowIfEngineError(r);
-
-        if (r.Kind == RoiResultKind.Pixels)
-            throw WrongKind(r, "OCR");
-
-        // effective_scale is engine output and is always > 0 on a successful result. A 0 here
-        // means the engine never set the field, and ToFramePoint would divide by it: the double
-        // division yields infinity and the unchecked cast to int yields int.MinValue, so the
-        // plugin would get plausible-looking coordinates that are catastrophically wrong.
-        if (!(r.EffectiveScale > 0))
-            throw new RoiResultException(r.RoiId,
-                $"effective_scale must be > 0 on a successful result (was {r.EffectiveScale}).",
-                reportedByEngine: false);
+        RoiResultValidator.ValidateForOcr(r);
 
         var rect = r.FrameRect ?? new Rect();
 
@@ -120,34 +107,8 @@ public static class ProtoMapping
     /// </exception>
     public static PixelPatchSampler ToPixelSampler(this RoiResult r)
     {
-        ThrowIfEngineError(r);
-
-        if (r.Kind is RoiResultKind.Text or RoiResultKind.Detailed)
-            throw WrongKind(r, "pixel");
-
-        var rect = r.FrameRect ?? new Rect();
-        var bgra = r.PixelsBgra.ToByteArray();
-        var stride = (int)r.PixelsStride;
-        var width = (int)r.PixelsWidth;
-        var height = (int)r.PixelsHeight;
-
-        if (stride < 0 || width < 0 || height < 0)
-            throw new RoiResultException(r.RoiId,
-                $"pixel geometry overflows int (stride {r.PixelsStride}, {r.PixelsWidth}x{r.PixelsHeight}).",
-                reportedByEngine: false);
-
-        if (stride < width * 4L)
-            throw new RoiResultException(r.RoiId,
-                $"pixels_stride {stride} is shorter than one row of {width} BGRA pixels.",
-                reportedByEngine: false);
-
-        if (bgra.LongLength < (long)stride * height)
-            throw new RoiResultException(r.RoiId,
-                $"pixels_bgra has {bgra.LongLength} bytes, needs {(long)stride * height} for " +
-                $"{width}x{height} at stride {stride}.",
-                reportedByEngine: false);
-
-        return new PixelPatchSampler(bgra, stride, width, height, (int)rect.X, (int)rect.Y);
+        RoiResultValidator.ValidateForPixels(r);
+        return PixelPatchFactory.Create(r);
     }
 
     /// <summary>
@@ -192,27 +153,4 @@ public static class ProtoMapping
         }
     }
 
-    private static void ThrowIfEngineError(RoiResult r)
-    {
-        if (r.Error)
-            throw new RoiResultException(r.RoiId,
-                r.ErrorMessage.Length > 0 ? r.ErrorMessage : "the engine reported a ROI failure.",
-                reportedByEngine: true);
-    }
-
-    /// <summary>
-    /// A result read as the mode it does not answer. Worth an exception rather than a best
-    /// effort because the fields of the mode that was NOT filled are all proto3 defaults, and
-    /// those defaults are indistinguishable from real readings: a PIXELS result read as OCR is
-    /// an empty panel, and a TEXT result read as pixels is a valid 0x0 patch whose every sample
-    /// clamps to black. Both keep a plugin's state machine running on a reading that never
-    /// existed, and neither sets <c>error</c>, so nothing else would ever flag it.
-    /// </summary>
-    /// <remarks><see cref="RoiResultKind.Unspecified"/> is not a mismatch — it is an engine
-    /// older than the field, and the checks below still cover a malformed payload.</remarks>
-    private static RoiResultException WrongKind(RoiResult r, string reading)
-        => new(r.RoiId,
-            $"result is {r.Kind} and cannot be read as {reading}; the subscription's RoiMode " +
-            $"does not match how '{r.RoiId}' is being looked up on the tick.",
-            reportedByEngine: false);
 }
