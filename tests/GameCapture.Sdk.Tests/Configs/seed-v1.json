@@ -5,6 +5,7 @@
   "outputs": [
     {
       "type": "json",
+      "addedIn": 1,
       "path": "captures/records.jsonl",
       "dedupeOnChange": true
     }

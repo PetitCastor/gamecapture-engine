@@ -1,5 +1,5 @@
 {
-  "configVersion": 2,
+  "configVersion": 3,
   "pipeName": "GameCapture.Engine",
   "saveDebugFrames": false,
   "ledgerPath": "ledger.csv",
@@ -17,6 +17,11 @@
         "template": "{name} x{count}",
         "lingerMs": 5000
       }
+    },
+    {
+      "type": "http",
+      "addedIn": 3,
+      "url": "https://example.invalid/records"
     }
   ]
 }

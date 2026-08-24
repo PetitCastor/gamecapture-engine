@@ -609,22 +609,46 @@ public static string Ensure() =>
     ConfigSeed.EnsureInLocalAppData(typeof(UserConfig).Assembly, "MyPlugin.config.json", "MyPlugin");
 ```
 
-Seeding still happens on first run. Beyond that, `ConfigSeed` compares the `configVersion` in the
-embedded default against the one in the user's file, and on a bump adds only what the user's file
-lacks — leaving every value they already set alone. So to ship a new default, add it to the embedded
-`config.json` *and* bump its `configVersion`.
+Seeding still happens on first run. Beyond that, each entry in the embedded `outputs` array carries
+the version it was introduced in, and `ConfigSeed` offers only entries newer than the version
+stamped on the user's file. So shipping a new default is two edits: add the entry with an `addedIn`,
+and bump `configVersion` to match.
 
-The stamp is written back whether or not anything was added, which is the part that matters: each
-new default is offered exactly **once**. A user who deletes it afterwards keeps it deleted, because
-the stamp already matches. Two consequences worth knowing before relying on it:
+```json
+{
+  "configVersion": 2,
+  "outputs": [
+    { "type": "json",    "addedIn": 1, "path": "captures/records.jsonl" },
+    { "type": "overlay", "addedIn": 2, "overlay": { "template": "{name}" } }
+  ]
+}
+```
 
-- Outputs are matched on `type` alone. Someone who repointed the stock `json` sink at their own path
-  is making a choice, not missing a default — matching on type keeps a second one from appearing
-  beside theirs and quietly double-writing. The cost is that a default adding a *second* sink of a
-  type the user already has is skipped.
-- A config file edited into invalid JSON is left exactly as it is, for `Load<T>` to report. Omitting
-  `configVersion` from the embedded default (version 0) opts out entirely and keeps the old
-  first-run-only behaviour.
+`addedIn` is bookkeeping about the shipped default, not a setting — it is stripped from what lands
+in the user's file.
+
+Tagging the entry rather than the file as a whole is what makes the guarantee hold for more than one
+release. Each default is offered exactly **once**; delete it afterwards and it stays deleted, however
+many versions ship later. Comparing the defaults against what the user currently has would instead
+read "deleted" and "never offered" as the same state, and resurrect a declined default on the next
+bump after the one that introduced it. Emptying `outputs` entirely is likewise a real choice, and
+survives.
+
+Three consequences worth knowing before relying on it:
+
+- **An untagged entry is never merged.** It ships to new users through first-run seeding, but no
+  existing file is offered it. Omit `configVersion` from the embedded default (version 0) and the
+  whole plugin opts out, keeping the old first-run-only behaviour.
+- **Outputs are also matched on `type`.** A genuinely new default is skipped if the user already has
+  a sink of that type — they may have added one themselves, and a second sink of the same type
+  quietly writes the same records to two places.
+- **Anything it cannot read, it declines to edit**: invalid JSON, duplicate keys, a root that is not
+  an object, an `outputs` that is not a list. The file is left exactly as it is for `Load<T>` to
+  report. A malformed *embedded* default is likewise not allowed to disturb an existing user's
+  working config.
+
+Writes go through a temporary file and a rename, so an interrupted run cannot leave a user holding a
+truncated config.
 
 **CLI.** The host parses `--pipe <name>` (overriding the config) and `--verbose` for every plugin.
 For flags of your own, use `PluginHostOptions.ExtraArgHandler`: it is handed the whole argument list

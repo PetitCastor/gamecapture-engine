@@ -20,20 +20,28 @@ namespace GameCapture.Sdk;
 /// <para>
 /// Rewriting the file unconditionally would fix that and introduce a worse problem: a user who
 /// deliberately deleted an output would get it back on every run, with no way to refuse it short of
-/// editing the binary. So the merge is gated on <see cref="PluginConfig.ConfigVersion"/>: a bump in
-/// the embedded default is what makes this class add anything, and the stamp is written back
-/// whether or not anything was added. Each new default therefore gets offered once. Delete it
-/// afterwards and it stays deleted, because the stamp already matches.
+/// editing the binary. So each entry in the embedded <c>outputs</c> array carries an
+/// <c>addedIn</c> version, and a merge only ever considers entries newer than the version stamped
+/// on the user's file (<see cref="PluginConfig.ConfigVersion"/>). Anything the user has already
+/// been offered is never reconsidered, whatever they subsequently did with it.
+/// </para>
+/// <para>
+/// Gating on the entry rather than on the file as a whole is what makes the promise survive more
+/// than one bump. Comparing the embedded defaults against what the user currently has would read
+/// "deleted" and "never offered" as the same state, and re-add a declined default on the next
+/// version after the one that introduced it.
 /// </para>
 /// <para>
 /// The merge is strictly additive — it never changes a value the user already has, and never
 /// removes anything. A plugin that has not opted in (no <c>configVersion</c> in its embedded
-/// default, i.e. version 0) keeps exactly today's first-run-only behaviour.
+/// default, i.e. version 0) keeps exactly today's first-run-only behaviour, and so does an
+/// individual <c>outputs</c> entry with no <c>addedIn</c>.
 /// </para>
 /// </remarks>
 public static class ConfigSeed
 {
     private const string VersionProperty = "configVersion";
+    private const string AddedInProperty = "addedIn";
     private const string OutputsProperty = "outputs";
     private const string AppDataFolder = "GameCapture";
 
@@ -59,7 +67,7 @@ public static class ConfigSeed
         var defaults = ReadResource(assembly, resourceName);
         if (!File.Exists(full))
         {
-            File.WriteAllText(full, defaults);
+            Write(full, Seedable(defaults));
             return path;
         }
 
@@ -97,31 +105,40 @@ public static class ConfigSeed
     /// </summary>
     private static void MergeNewDefaults(string path, string defaults)
     {
-        if (JsonNode.Parse(defaults) is not JsonObject embedded)
+        // A malformed embedded default is a packaging bug in the plugin, and one the author will
+        // meet head-on through a first run. Bailing here rather than throwing keeps it from also
+        // taking down every existing user, whose own config is perfectly good.
+        if (TryParseObject(defaults) is not { } embedded)
             return;
 
         // Version 0 means the plugin never opted in; leave its users on first-run-only behaviour.
-        var target = ReadVersion(embedded);
+        var target = ReadInt(embedded, VersionProperty);
         if (target == 0)
             return;
 
-        JsonObject user;
+        string text;
         try
         {
-            // A file the user has hand-edited into invalid JSON is not ours to rewrite — silently
-            // replacing it is exactly how hand-edited configs disappear. PluginConfig.Load will
-            // surface the parse error with the file intact.
-            if (JsonNode.Parse(File.ReadAllText(path)) is not JsonObject parsed)
-                return;
-
-            user = parsed;
+            text = File.ReadAllText(path);
         }
-        catch (JsonException)
+        catch (IOException)
         {
             return;
         }
 
-        if (ReadVersion(user) >= target)
+        // A file the user has hand-edited into something unreadable is not ours to rewrite —
+        // silently replacing it is exactly how hand-edited configs disappear. PluginConfig.Load
+        // surfaces the problem with the file intact.
+        if (TryParseObject(text) is not { } user)
+            return;
+
+        var stamped = ReadInt(user, VersionProperty);
+        if (stamped >= target)
+            return;
+
+        // Outputs present but not a list is a shape we do not understand well enough to edit.
+        var outputsKey = FindKey(user, OutputsProperty);
+        if (outputsKey is not null && user[outputsKey] is not JsonArray)
             return;
 
         foreach (var (key, value) in embedded)
@@ -130,40 +147,38 @@ public static class ConfigSeed
                 continue;
 
             if (Matches(key, OutputsProperty))
-                MergeOutputs(user, value as JsonArray);
+                MergeOutputs(user, value as JsonArray, stamped);
             else if (FindKey(user, key) is null)
                 user[key] = value?.DeepClone();
         }
 
-        // Stamped even when nothing was added: the stamp records that this version's defaults were
-        // offered, which is what makes a later deletion stick.
+        // Stamped even when nothing was added: the stamp is the record of how far this file has
+        // been brought forward, and every later merge reads it to know what it must not revisit.
         Set(user, VersionProperty, target);
-        File.WriteAllText(path, user.ToJsonString(WriteOptions));
+        Write(path, user.ToJsonString(WriteOptions));
     }
 
     /// <summary>
-    /// Adds embedded outputs whose <c>type</c> the user has none of, leaving every existing entry
-    /// untouched.
+    /// Adds embedded outputs introduced after <paramref name="stamped"/>, leaving every existing
+    /// entry untouched.
     /// </summary>
     /// <remarks>
-    /// Identity is the sink's <c>type</c> alone, not type+path/url. A user who repointed the stock
-    /// json sink at their own path would otherwise look like someone missing it, and get a second
-    /// one added — two sinks quietly writing the same records to different files. Coarse identity
-    /// fails the other way instead: a default that adds a second sink of a type the user already
-    /// has is skipped. That is the safe direction, and today's defaults are one sink per type.
+    /// Two independent guards, and both are load-bearing. <c>addedIn</c> is what makes an offer
+    /// happen once: an entry at or below the user's stamp has already been put in front of them,
+    /// so whether it is currently in their file says nothing this code is entitled to act on. The
+    /// <c>type</c> check then stops a genuinely new default from landing beside one the user
+    /// happens to have added themselves under the same type — two sinks quietly writing the same
+    /// records to different places.
     /// </remarks>
-    private static void MergeOutputs(JsonObject user, JsonArray? embeddedOutputs)
+    private static void MergeOutputs(JsonObject user, JsonArray? embeddedOutputs, int stamped)
     {
         if (embeddedOutputs is null)
             return;
 
-        var key = FindKey(user, OutputsProperty);
-        if (key is null || user[key] is not JsonArray userOutputs)
+        if (FindKey(user, OutputsProperty) is not { } key || user[key] is not JsonArray userOutputs)
         {
-            // No outputs at all, or something that isn't a list: the embedded list is the only
-            // sensible answer, and there is nothing of the user's to lose.
-            Set(user, OutputsProperty, embeddedOutputs.DeepClone());
-            return;
+            userOutputs = [];
+            Set(user, OutputsProperty, userOutputs);
         }
 
         var present = userOutputs.OfType<JsonObject>()
@@ -171,21 +186,128 @@ public static class ConfigSeed
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var candidate in embeddedOutputs.OfType<JsonObject>())
-            if (present.Add(TypeOf(candidate)))
-                userOutputs.Add(candidate.DeepClone());
+        {
+            if (ReadInt(candidate, AddedInProperty) <= stamped)
+                continue;
+
+            if (!present.Add(TypeOf(candidate)))
+                continue;
+
+            userOutputs.Add(WithoutBookkeeping(candidate));
+        }
     }
 
-    private static string TypeOf(JsonObject output)
-        => FindKey(output, "type") is { } key && output[key] is JsonValue value
-            && value.TryGetValue<string>(out var type)
-                ? type
-                : "";
+    /// <summary>
+    /// The shipped default as a first run should land it: <c>addedIn</c> tells this class which
+    /// entries are new, and means nothing in a file the user is expected to open and edit. Falls
+    /// back to the raw resource text when it cannot be parsed, so a packaging typo still reaches
+    /// the author through <see cref="PluginConfig.Load{T}"/> rather than being swallowed here.
+    /// </summary>
+    private static string Seedable(string defaults)
+    {
+        if (TryParseObject(defaults) is not { } embedded)
+            return defaults;
 
-    private static int ReadVersion(JsonObject config)
-        => FindKey(config, VersionProperty) is { } key && config[key] is JsonValue value
-            && value.TryGetValue<int>(out var version)
-                ? version
-                : 0;
+        if (FindKey(embedded, OutputsProperty) is not { } key || embedded[key] is not JsonArray outputs)
+            return defaults;
+
+        var cleaned = new JsonArray();
+        foreach (var node in outputs)
+            cleaned.Add(node is JsonObject output ? WithoutBookkeeping(output) : node?.DeepClone());
+
+        embedded[key] = cleaned;
+        return embedded.ToJsonString(WriteOptions);
+    }
+
+    /// <summary><c>addedIn</c> describes the shipped default, not the user's copy of it.</summary>
+    private static JsonNode WithoutBookkeeping(JsonObject output)
+    {
+        var clone = (JsonObject)output.DeepClone();
+        if (FindKey(clone, AddedInProperty) is { } key)
+            clone.Remove(key);
+
+        return clone;
+    }
+
+    /// <summary>
+    /// Writes through a temporary file in the same directory, then replaces. <see cref="Ensure"/>
+    /// is the only thing here that touches a file the user may have edited, and a plain
+    /// <c>WriteAllText</c> truncates before it writes — a crash or a full disk mid-write would
+    /// leave them with the empty config this class exists to protect them from.
+    /// </summary>
+    private static void Write(string path, string content)
+    {
+        var temp = path + ".tmp";
+        try
+        {
+            File.WriteAllText(temp, content);
+            File.Move(temp, path, overwrite: true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (IOException)
+            {
+                // Losing the temp file matters less than the exception on its way up.
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Parses to an object, or null for anything this class should decline to touch: malformed
+    /// JSON, and a root that is not an object.
+    /// </summary>
+    /// <remarks>
+    /// The key enumeration is not a formality. Duplicate keys parse without complaint and then
+    /// throw <see cref="ArgumentException"/> on first access, so forcing that access here is what
+    /// turns "the plugin throws on every launch from now on" into the same quiet decline as any
+    /// other file it cannot read.
+    /// </remarks>
+    private static JsonObject? TryParseObject(string text)
+    {
+        try
+        {
+            if (JsonNode.Parse(text) is not JsonObject parsed)
+                return null;
+
+            _ = parsed.Select(pair => pair.Key).ToArray();
+            return parsed;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static string TypeOf(JsonObject output) => ReadString(output, "type") ?? "";
+
+    private static string? ReadString(JsonObject node, string name)
+        => Read(node, name, out string? value) ? value : null;
+
+    private static int ReadInt(JsonObject node, string name)
+        => Read(node, name, out int value) ? value : 0;
+
+    /// <summary>
+    /// Reads a scalar under a case-insensitive key. A value of the wrong JSON type reads as absent
+    /// rather than throwing — <c>"configVersion": "2"</c> is a user's typo, not a reason to refuse
+    /// to start.
+    /// </summary>
+    private static bool Read<T>(JsonObject node, string name, out T? value)
+    {
+        value = default;
+        return FindKey(node, name) is { } key
+            && node[key] is JsonValue found
+            && found.TryGetValue(out value);
+    }
 
     /// <summary>
     /// Writes under the key's existing casing when there is one. <see cref="PluginConfig"/> reads
