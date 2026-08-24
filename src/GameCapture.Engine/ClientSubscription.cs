@@ -4,11 +4,11 @@ using GameCapture.Contracts.Proto;
 namespace GameCapture.Engine;
 
 /// <summary>
-/// One connected plugin: the ROI set it subscribed and the queue of ticks waiting to be written
-/// back to it. Everything about a client that the scan loop needs lives here, so the loop never
+/// One connected plugin's subscription: its ROI set and the queue of ticks waiting to be written
+/// back to it. Everything about a subscription that the scan loop needs lives here, so the loop never
 /// touches gRPC types or blocks on a stream write.
 /// </summary>
-internal sealed class ClientConnection
+internal sealed class ClientSubscription
 {
     /// <summary>
     /// Four ticks (~2 s at the default 500 ms cadence). Deep enough to ride out a plugin's
@@ -17,7 +17,7 @@ internal sealed class ClientConnection
     /// </summary>
     private const int OutboundCapacity = 4;
 
-    private readonly Action<ClientConnection>? _onNameChanged;
+    private readonly Action<ClientSubscription>? _onNameChanged;
 
     // Full-replacement swap under volatile: the scan loop reads this on every tick while a
     // RoiSetUpdate may be arriving on the request-pump thread. Swapping the whole list (never
@@ -34,7 +34,7 @@ internal sealed class ClientConnection
     /// <param name="replayMode">Selects the overflow policy; see <see cref="Out"/>.</param>
     /// <param name="onNameChanged">Invoked when the client's Hello arrives, so the registry can
     /// refresh the status snapshot without the connection knowing about EngineStatus.</param>
-    public ClientConnection(bool replayMode, Action<ClientConnection>? onNameChanged = null)
+    public ClientSubscription(bool replayMode, Action<ClientSubscription>? onNameChanged = null)
     {
         _onNameChanged = onNameChanged;
 

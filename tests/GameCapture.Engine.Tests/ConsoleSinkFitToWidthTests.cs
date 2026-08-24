@@ -8,7 +8,7 @@ namespace GameCapture.Engine.Tests;
 /// </summary>
 /// <remarks>
 /// A duplicated test for a deliberately duplicated class (see the remark on
-/// <c>GameCapture.Engine/Core/ConsoleSink.cs</c>): the two are allowed to drift, and the moment one of
+/// <c>GameCapture.Engine/Operations/ConsoleSink.cs</c>): the two are allowed to drift, and the moment one of
 /// them drifts on THIS behaviour — a status row that touches the last column scrolls the buffer, so
 /// the truncation is load-bearing rather than cosmetic — the copy that drifted must fail on its own,
 /// not stay silently untested because the other copy still passes.

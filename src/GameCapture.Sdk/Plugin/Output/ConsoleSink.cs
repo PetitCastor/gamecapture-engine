@@ -9,7 +9,7 @@ namespace GameCapture.Sdk;
 /// scrolling writes.
 /// </summary>
 /// <remarks>
-/// The engine keeps a deliberate fork of this class (<c>GameCapture.Engine/Core/ConsoleSink.cs</c>):
+/// The engine keeps a deliberate fork of this class (<c>GameCapture.Engine/Operations/ConsoleSink.cs</c>):
 /// after the repo split the engine cannot depend on the SDK package, and a console UI is not a
 /// contract worth publishing a shared package for. The two are expected to drift.
 /// </remarks>

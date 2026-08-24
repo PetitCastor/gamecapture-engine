@@ -1,0 +1,85 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/PetitCastor/gamecapture-engine")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("GameCapture.Sdk.Testing.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace GameCapture.Sdk.Testing
+{
+    public static class EngineLocator
+    {
+        public static string Resolve() { }
+    }
+    public sealed class FakePluginServices : GameCapture.Sdk.IPluginServices
+    {
+        public FakePluginServices() { }
+        public System.Collections.Generic.List<GameCapture.Sdk.CaptureRecord> Cleared { get; }
+        public System.Func<GameCapture.Contracts.RoiRect?, string, System.Threading.CancellationToken, System.Threading.Tasks.Task<string?>>? DumpFrameHandler { get; set; }
+        public System.Collections.Generic.List<GameCapture.Sdk.CaptureRecord> Emitted { get; }
+        public GameCapture.Sdk.EngineInfo Engine { get; set; }
+        public System.Collections.Generic.IReadOnlyList<string> Logs { get; }
+        public System.Func<GameCapture.Sdk.RoiSubscription, System.Threading.CancellationToken, System.Threading.Tasks.Task<GameCapture.Contracts.OcrRegionResult?>>? ReadRoiHandler { get; set; }
+        public System.Collections.Generic.IReadOnlyList<string> VerboseLogs { get; }
+        public System.Threading.Tasks.Task<string?> DumpFrameAsync(GameCapture.Contracts.RoiRect? roi, string prefix, System.Threading.CancellationToken ct) { }
+        public void Emit(GameCapture.Sdk.CaptureRecord record) { }
+        public void EmitCleared(System.DateTime timestamp, string plugin) { }
+        public void Log(string message) { }
+        public void LogVerbose(string message) { }
+        public System.Threading.Tasks.Task<GameCapture.Contracts.OcrRegionResult?> ReadRoiAsync(GameCapture.Sdk.RoiSubscription roi, System.Threading.CancellationToken ct) { }
+    }
+    public sealed class FakeRecordSink : GameCapture.Sdk.IRecordSink, System.IAsyncDisposable
+    {
+        public FakeRecordSink() { }
+        public System.Collections.Generic.List<GameCapture.Sdk.CaptureRecord> Received { get; }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask EmitAsync(GameCapture.Sdk.CaptureRecord record, System.Threading.CancellationToken ct) { }
+    }
+    public sealed class OcrLineSpec : System.IEquatable<GameCapture.Sdk.Testing.OcrLineSpec>
+    {
+        public OcrLineSpec(params GameCapture.Sdk.Testing.OcrWordSpec[] words) { }
+        public OcrLineSpec(string Text, System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.Testing.OcrWordSpec> Words) { }
+        public string Text { get; init; }
+        public System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.Testing.OcrWordSpec> Words { get; init; }
+        public static GameCapture.Sdk.Testing.OcrLineSpec op_Implicit(string text) { }
+    }
+    public readonly struct OcrWordSpec : System.IEquatable<GameCapture.Sdk.Testing.OcrWordSpec>
+    {
+        public OcrWordSpec(string Text, GameCapture.Contracts.RectF CropRect) { }
+        public GameCapture.Contracts.RectF CropRect { get; init; }
+        public string Text { get; init; }
+    }
+    public static class ReplayCorpus
+    {
+        public static string Resolve(string relativeDir) { }
+    }
+    public static class ReplayHarness
+    {
+        public static System.Threading.Tasks.Task<GameCapture.Sdk.Testing.ReplayResult> RunAsync(GameCapture.Sdk.Testing.ReplayOptions o, System.Threading.CancellationToken ct = default) { }
+    }
+    public sealed class ReplayOptions
+    {
+        public ReplayOptions() { }
+        public string? CorpusDir { get; init; }
+        public required string EnginePath { get; init; }
+        public required GameCapture.Sdk.IGameCapturePlugin Plugin { get; init; }
+        public System.TimeSpan Timeout { get; init; }
+        public double? VideoFps { get; init; }
+        public string? VideoPath { get; init; }
+    }
+    public sealed class ReplayResult : System.IEquatable<GameCapture.Sdk.Testing.ReplayResult>
+    {
+        public ReplayResult(System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.CaptureRecord> Records, int ExitCode, GameCapture.Sdk.StreamEndReason Reason) { }
+        public int ExitCode { get; init; }
+        public GameCapture.Sdk.StreamEndReason Reason { get; init; }
+        public System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.CaptureRecord> Records { get; init; }
+    }
+    public sealed class TickDataBuilder
+    {
+        public TickDataBuilder(int frameWidth = 2560, int frameHeight = 1440) { }
+        public GameCapture.Sdk.Testing.TickDataBuilder At(System.DateTimeOffset at) { }
+        public GameCapture.Sdk.TickData Build() { }
+        public GameCapture.Sdk.Testing.TickDataBuilder Detailed(GameCapture.Sdk.RoiId id, params GameCapture.Sdk.Testing.OcrLineSpec[] lines) { }
+        public GameCapture.Sdk.Testing.TickDataBuilder Errored(GameCapture.Sdk.RoiId id, string message) { }
+        public GameCapture.Sdk.Testing.TickDataBuilder FrameSeq(ulong seq) { }
+        public GameCapture.Sdk.Testing.TickDataBuilder Manual() { }
+        public GameCapture.Sdk.Testing.TickDataBuilder Pixels(GameCapture.Sdk.RoiId id, byte b, byte g, byte r, int w, int h) { }
+        public GameCapture.Sdk.Testing.TickDataBuilder Text(GameCapture.Sdk.RoiId id, string text) { }
+    }
+}

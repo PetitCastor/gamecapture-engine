@@ -99,7 +99,7 @@ baseline of the same session before trusting it as a stand-in.
 ## Backpressure: replay vs. live
 
 The engine's per-client channel picks its full-mode based on whether the session is a replay
-(`ClientConnection.cs`): `BoundedChannelFullMode.Wait` in replay, `DropOldest` live. A live client
+(`ClientSubscription.cs`): `BoundedChannelFullMode.Wait` in replay, `DropOldest` live. A live client
 that falls behind loses old ticks rather than stalling the scan loop; a replay client must never
 lose one — parity means every frame in the corpus produces exactly one tick, deterministically,
 regardless of how slowly a plugin consumes them.

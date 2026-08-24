@@ -57,6 +57,9 @@ jobs:
       - name: Build
         run: dotnet build GameCaptureEngine.slnx --no-restore -c Release
 
+      - name: Build benchmarks
+        run: dotnet build benchmarks/GameCapture.Engine.Benchmarks/GameCapture.Engine.Benchmarks.csproj --no-restore -c Release
+
       - name: Test
         run: dotnet test GameCaptureEngine.slnx --no-build -c Release --verbosity normal
 

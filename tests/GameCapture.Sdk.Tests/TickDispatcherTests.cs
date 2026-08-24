@@ -6,8 +6,9 @@ namespace GameCapture.Sdk.Tests;
 
 /// <summary>
 /// Everything the host decides about a tick before the plugin sees it. Driven directly rather than
-/// through a session, because every case here is a combination — a gap AND a failed region, a policy
-/// AND a plugin that throws — and staging those against a live engine means racing it.
+/// through a session, because every case combines concerns — a frame-sequence gap and a failed
+/// region, or an error policy and a plugin that throws — and staging those against a live engine
+/// means racing it.
 /// </summary>
 public class TickDispatcherTests
 {
@@ -93,10 +94,10 @@ public class TickDispatcherTests
             () => dispatcher.DispatchAsync(Tick(1, rois: (PanelRoi, "", false)), cts.Token));
     }
 
-    // ---------- dropped ticks ----------
+    // ---------- frame-sequence gaps ----------
 
     [Fact]
-    public async Task ASequenceGap_RaisesTicksDroppedWithTheCount()
+    public async Task AFrameSequenceGap_RaisesTicksDroppedWithTheCount()
     {
         var plugin = new StubPlugin();
         var dispatcher = New(plugin, out _);

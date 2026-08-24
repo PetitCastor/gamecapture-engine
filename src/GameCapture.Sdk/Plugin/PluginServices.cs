@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using GameCapture.Contracts;
 
 namespace GameCapture.Sdk;
@@ -41,21 +40,13 @@ internal sealed class PluginServices : IPluginServices
     /// </summary>
     private readonly Action<CaptureRecord>? _recordSink;
 
-    private readonly IRecordSink _sink;
-
-    /// <summary>Emitted records queue here so <see cref="Emit"/>/<see cref="EmitCleared"/> stay
-    /// synchronous and non-blocking; a single background drain task delivers them to <see cref="_sink"/>
-    /// in order. Unbounded is safe — output volume is one record per real change, not per frame.</summary>
-    private readonly Channel<CaptureRecord> _outbox =
-        Channel.CreateUnbounded<CaptureRecord>(new UnboundedChannelOptions { SingleReader = true });
-
-    private Task? _drain;
+    private readonly PluginOutputPipeline _outputPipeline;
 
     public PluginServices(List<CaptureRecord> records, IPluginOutput output, bool verbose,
         Func<RoiRect?, string, CancellationToken, Task<string?>>? dumpFrame,
         Func<RoiSubscription, CancellationToken, Task<OcrRegionResult?>>? readRoi = null,
-        Action<CaptureRecord>? recordSink = null,
-        IRecordSink? sink = null)
+        Action<CaptureRecord>? recordSink = null, IRecordSink? sink = null,
+        PluginOutputPipeline? outputPipeline = null)
     {
         _records = records;
         _output = output;
@@ -63,7 +54,8 @@ internal sealed class PluginServices : IPluginServices
         _dumpFrame = dumpFrame;
         _readRoi = readRoi;
         _recordSink = recordSink;
-        _sink = sink ?? NullRecordSink.Instance;
+        _outputPipeline = outputPipeline
+            ?? new PluginOutputPipeline(sink ?? NullRecordSink.Instance, output);
     }
 
     /// <summary>
@@ -77,7 +69,7 @@ internal sealed class PluginServices : IPluginServices
     {
         _records.Add(record);
         _recordSink?.Invoke(record);          // legacy tee, unchanged
-        _outbox.Writer.TryWrite(record);       // fan to sinks off the tick thread
+        _outputPipeline.Enqueue(record);       // fan to sinks off the tick thread
 
         // One output call per capture: each WriteLine erases/redraws the status bar, so five
         // separate calls would flicker it five times per tracker event.
@@ -93,34 +85,17 @@ internal sealed class PluginServices : IPluginServices
     {
         // Deliberately does NOT touch _records or _output — a clear is not a capture, only a signal
         // for sinks (overlay hide) to act on.
-        _outbox.Writer.TryWrite(
+        _outputPipeline.Enqueue(
             new CaptureRecord(timestamp, plugin, TriggerKind.Auto, "") { Kind = RecordKind.Cleared });
     }
 
-    /// <summary>Starts the background drain loop that delivers queued records to <see cref="_sink"/>.
-    /// Called once per run, after construction.</summary>
-    internal void StartDraining(CancellationToken ct) => _drain = Task.Run(() => DrainAsync(ct));
+    /// <summary>Starts the background drain loop that delivers queued records through
+    /// <see cref="_outputPipeline"/>. Called once per run, after construction.</summary>
+    internal void StartDraining(CancellationToken ct) => _outputPipeline.Start(ct);
 
-    /// <summary>Flushes the outbox and disposes the sink. Awaited before the run's summary prints, so
-    /// every record emitted during the run reaches its sinks first.</summary>
-    internal async Task CompleteAndDrainAsync()
-    {
-        _outbox.Writer.TryComplete();
-        if (_drain is not null)
-            await _drain;
-        await _sink.DisposeAsync();
-    }
-
-    private async Task DrainAsync(CancellationToken ct)
-    {
-        // CancellationToken.None here, deliberately: a cancelled run still drains what is already
-        // queued. The ct passed to EmitAsync is what lets a sink abort a slow write.
-        await foreach (var record in _outbox.Reader.ReadAllAsync(CancellationToken.None))
-        {
-            try { await _sink.EmitAsync(record, ct); }
-            catch (Exception ex) { _output.WriteLine($"sink error: {ex.Message}"); }
-        }
-    }
+    /// <summary>Flushes the outbox and disposes the composed sinks. Awaited before the run's summary
+    /// prints, so every record emitted during the run reaches its sinks first.</summary>
+    internal Task CompleteAndDrainAsync() => _outputPipeline.CompleteAndDrainAsync();
 
     public Task<string?> DumpFrameAsync(RoiRect? roi, string prefix, CancellationToken ct)
         => _dumpFrame?.Invoke(roi, prefix, ct) ?? Task.FromResult<string?>(null);

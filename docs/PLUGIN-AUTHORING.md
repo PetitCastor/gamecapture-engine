@@ -383,14 +383,14 @@ host's loop, so anything slow belongs on the next tick.
 | --- | --- | --- |
 | `Connected(EngineInfo)` | Subscribed and receiving. Raised **once per connect**, so a reconnect raises it again. | Read `Engine.ReplayMode` / `ScanInterval`; re-arm anything per-session. |
 | `Reconnecting(Attempt)` | The session dropped; the host is about to dial again. `Attempt` counts from 1 within the current disconnected stretch and resets on the next `Connected`. | Escalate logging. Not a decision point — whether to keep going is the host's call. |
-| `TicksDropped(Gap)` | Frames were scanned that this plugin never saw, proven by a jump in `TickData.FrameSeq`. | Treat the next tick as a fresh observation rather than the successor of the last one. |
+| `TicksDropped(Gap)` | A frame-sequence gap proves that frames were scanned which this plugin never saw. | Treat the next tick as a fresh observation rather than the successor of the last one. |
 | `Ended(StreamEndReason)` | The run is over; the summary is about to print. The last chance to persist. | Flush. Branch on the reason. |
 
 Dropped ticks are a **normal live-mode event**, not a transport failure: the engine's per-client
 channel holds 4 ticks and drops the oldest rather than stalling the scan loop for every other
 plugin. A replay session never drops (the engine blocks instead), which is what makes corpus runs
 deterministic. A tracker watching for an *edge* — a counter incrementing, a panel appearing — can
-miss the edge entirely across a gap, so the honest response is to reset the "what did I last see"
+miss the edge entirely across a frame-sequence gap, so the honest response is to reset the "what did I last see"
 state rather than to compare across the hole.
 
 `StreamEndReason` distinguishes four endings: `ReplayCompleted` (the corpus ran out),
