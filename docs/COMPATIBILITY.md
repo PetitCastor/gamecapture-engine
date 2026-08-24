@@ -11,7 +11,7 @@ bumping each of the three version axes.
 
 | Protocol | Engine | SDK / Contracts / Sdk.Testing / Sdk.Overlay / Plugin.Template | Notes |
 | --- | --- | --- | --- |
-| 1 | v1.0.0+ | v1.0.0+ (`Sdk.Overlay`: v1.1.0+) | First published set, tagged from `gamecapture-engine` itself — not this mono-repo, which never publishes a `v1.0.0`. The v1.1.0 output-sinks train is additive: `CaptureRecord.Kind`/`Fields`, JSON/CSV/HTTP outputs, and the new opt-in `GameCapture.Sdk.Overlay` package. v1.2.0 is additive too: `ConfigSeed` plus `PluginConfig.ConfigVersion`, which let a plugin ship a default to users who have already run it once. No `capture.proto` edit: protocol remains 1. |
+| 1 | v1.0.0+ | v1.0.0+ (`Sdk.Overlay`: v1.1.0+) | First published set, tagged from `gamecapture-engine` itself — not this mono-repo, which never publishes a `v1.0.0`. The v1.1.0 output-sinks train is additive: `CaptureRecord.Kind`/`Fields`, JSON/CSV/HTTP outputs, and the new opt-in `GameCapture.Sdk.Overlay` package. v1.1.5 is additive too: `ConfigSeed` plus `PluginConfig.ConfigVersion`, which let a plugin ship a default to users who have already run it once. No `capture.proto` edit: protocol remains 1. |
 
 A new row is added whenever protocol `Min` or `Current` moves (see below); package version bumps
 that don't touch the protocol integer extend the existing row's floor instead of adding one.
