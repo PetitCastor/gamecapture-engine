@@ -1,5 +1,4 @@
 using GameCapture.Contracts;
-using Grpc.Core;
 
 namespace GameCapture.Sdk;
 
@@ -98,38 +97,26 @@ public static class GameCapturePluginHost
             PluginServices? services = null;
             bool IsReplay() => services?.Engine.ReplayMode ?? false;
 
-            // The DelegateRecordSink adapter keeps the legacy RecordSink callback working as one more
-            // sink in the composite, so the replay harness path is unchanged. Explicit options.Sinks
-            // wins over config — the ordinary case for tests and embedding hosts.
-            List<IRecordSink> sinks = [];
+            PluginOutputPipeline outputPipeline;
             try
             {
-                if (options.Sinks is { } explicitSinks)
-                    sinks.AddRange(explicitSinks);
-                else
-                    foreach (var spec in config.Outputs)
-                        sinks.Add(SinkFactory.Build(spec, IsReplay, output, options.OverlayFactory));
+                outputPipeline = await PluginOutputPipeline.CreateAsync(options, config, IsReplay,
+                    output);
             }
             catch (ArgumentException ex)
             {
-                // A spec past the bad one never got built, but everything built before it (an
-                // HttpRecordSink's HttpClient, say) did — dispose those rather than leak them.
-                foreach (var built in sinks)
-                    await built.DisposeAsync();
                 Console.Error.WriteLine($"invalid output configuration: {ex.Message}");
                 return 1;
             }
-            if (options.RecordSink is { } legacy)
-                sinks.Add(new DelegateRecordSink(legacy));
 
             // Debug dumps are the engine's to write — the frame never crosses the boundary, only the
             // path it was written to. Null switches the whole debug path off inside the plugin.
-            // recordSink is null here (not options.RecordSink): the legacy callback already reaches
-            // Emit through the DelegateRecordSink added to sinks above — passing it a second time
-            // would invoke it twice per record, once synchronously and once off the drain thread.
+            // recordSink is null here (not options.RecordSink): the output pipeline already adapts
+            // the legacy callback as a sink. Passing it a second time would invoke it twice per
+            // record, once synchronously and once off the drain thread.
             services = new PluginServices(records, output, parsed.Verbose,
                 config.SaveDebugFrames ? client.DumpFrameAsync : null,
-                client.ReadRoiAsync, recordSink: null, sink: new CompositeRecordSink(sinks));
+                client.ReadRoiAsync, recordSink: null, outputPipeline: outputPipeline);
             services.StartDraining(ct);
 
             output.WriteLine($"Pipe:      {parsed.PipeName}");
@@ -141,10 +128,10 @@ public static class GameCapturePluginHost
             int exitCode;
             try
             {
-                var (reason, code) = await RunSessionsAsync(plugin, client, services, output, options,
-                    parsed.PipeName, ct);
+                var sessionRunner = new PluginSessionRunner(plugin, client, services, output,
+                    options, parsed.PipeName);
+                var (reason, code) = await sessionRunner.RunAsync(ct);
                 exitCode = code;
-
                 plugin.OnSessionEvent(new SessionEvent.Ended(reason));
             }
             finally
@@ -161,141 +148,6 @@ public static class GameCapturePluginHost
             if (cancelHandler is not null)
                 Console.CancelKeyPress -= cancelHandler;
         }
-    }
-
-    /// <summary>
-    /// The connect / subscribe / consume loop, with its reconnect and shutdown rules. Returns why it
-    /// stopped and what the process should exit with.
-    /// </summary>
-    private static async Task<(StreamEndReason Reason, int ExitCode)> RunSessionsAsync(
-        IGameCapturePlugin plugin, CaptureClient client, PluginServices services, IPluginOutput output,
-        PluginHostOptions options, string pipeName, CancellationToken ct)
-    {
-        var rois = plugin.Rois;
-        var dispatcher = new TickDispatcher(plugin, services, output);
-
-        // Announced once per disconnected stretch rather than per retry: a plugin started before the
-        // engine would otherwise scroll the same line every few seconds.
-        var announcedWait = false;
-        var reconnectAttempt = 0;
-        var replayMode = false;
-
-        while (true)
-        {
-            if (!announcedWait)
-            {
-                output.WriteLine($"waiting for engine on pipe '{pipeName}'...");
-                announcedWait = true;
-            }
-
-            try
-            {
-                // Inner try purely to re-type transport failures: every arm below is written against
-                // the SDK's own exceptions, never RpcException. gRPC status codes are a detail of the
-                // current boundary, and a host that switched on them would have to be rewritten if
-                // the boundary ever changed.
-                try
-                {
-                    var engine = await client.WaitForEngineAsync(options.EngineWait, ct);
-                    announcedWait = false;
-                    replayMode = engine.ReplayMode;
-
-                    await using var session = await client.TrackAsync(plugin.Name, rois, ct);
-
-                    services.Engine = engine.WithSession(session);
-                    dispatcher.OnConnected();
-                    reconnectAttempt = 0;
-                    plugin.OnSessionEvent(new SessionEvent.Connected(services.Engine));
-
-                    WriteConnectedBanner(services.Engine, rois, output);
-
-                    await foreach (var tick in session.Ticks(ct))
-                        await dispatcher.DispatchAsync(tick, ct);
-                }
-                catch (RpcException e)
-                {
-                    // Deliberately unfiltered by cancellation: a call this host cancelled surfaces as
-                    // an OperationCanceledException (the channel sets
-                    // ThrowOperationCanceledOnCancellation), so what reaches here during shutdown is
-                    // only the write that was already in flight on the request stream. Translate maps
-                    // its CANCELLED to SessionFaultedException, and the cancellation-filtered arm
-                    // below takes it — the same "not an engine failure" the RpcException arm used to
-                    // express.
-                    throw ProtocolNegotiation.Translate(e, ProtocolVersion.Current);
-                }
-            }
-            catch (ProtocolMismatchException ex)
-            {
-                // The one failure the loop must NOT retry. Both sides' versions are fixed for the
-                // life of their processes, so dialling again can only reproduce this forever — and
-                // the useful thing to tell the user is which side to upgrade, which the message says.
-                //
-                // FIRST, and specifically ahead of the cancellation-filtered arms below: this derives
-                // from GameCaptureException, and catch clauses match in textual order, so placing it
-                // after them would let a shutdown racing the refusal report an incompatible engine as
-                // a clean exit 0. Cancellation cannot manufacture this exception — it needs either the
-                // engine's FAILED_PRECONDITION with range trailers or the range check in
-                // WaitForEngineAsync — so whenever it is raised it is the true reason the run ended.
-                output.WriteLine($"incompatible engine: {ex.Message}");
-                return (StreamEndReason.Faulted, 1);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                // our own Ctrl+C: the channel maps a cancelled call to this, not RpcException
-                return (StreamEndReason.Cancelled, 0);
-            }
-            catch (GameCaptureException) when (ct.IsCancellationRequested)
-            {
-                // Ctrl+C again: the channel's OCE mapping covers the call, but a write already in
-                // flight on the request stream can still surface as CANCELLED. Not an engine failure.
-                return (StreamEndReason.Cancelled, 0);
-            }
-            catch (TimeoutException)
-            {
-                continue; // engine still not serving; the line above already says we are waiting
-            }
-            catch (Exception ex) when (ex is GameCaptureException or OperationCanceledException)
-            {
-                // The engine went away mid-session. Reconnecting means a fresh subscription, and the
-                // plugin's state is deliberately kept: what it already saw is still true, and the
-                // first read after reconnect is a re-sighting rather than a new event.
-                //
-                // OperationCanceledException lands here too, and only because ct did NOT cause it:
-                // the channel sets ThrowOperationCanceledOnCancellation, which maps a call the ENGINE
-                // cancelled (a restart aborting the in-flight Track with CANCELLED) to the same
-                // exception type as our own Ctrl+C. Caught unfiltered, that would exit the plugin 0
-                // on exactly the failure this loop exists to survive.
-                output.WriteLine("engine connection lost — reconnecting");
-                plugin.OnSessionEvent(new SessionEvent.Reconnecting(++reconnectAttempt));
-
-                // Paced: WaitForEngineAsync returns immediately whenever GetStatus answers, so an
-                // engine that is up but cannot serve a Track stream (mid-shutdown, for one) would
-                // otherwise spin this loop with no delay at all.
-                try { await Task.Delay(options.ReconnectDelay, ct); }
-                catch (OperationCanceledException) { return (StreamEndReason.Cancelled, 0); }
-
-                continue;
-            }
-
-            // Stream ended normally. Which of the two endings it was is the engine's to know: a
-            // replay that finished is a completed run, a live engine completing the stream is a
-            // shutdown, and a plugin that persists anything usually cares about the difference.
-            return (replayMode ? StreamEndReason.ReplayCompleted : StreamEndReason.EngineShutdown, 0);
-        }
-    }
-
-    private static void WriteConnectedBanner(EngineInfo engine, IReadOnlyList<RoiSubscription> rois,
-        IPluginOutput output)
-    {
-        output.WriteLine($"Engine:    {engine.EngineVersion}{(engine.ReplayMode ? " (replay)" : "")}");
-        output.WriteLine($"Frame:     {(engine.FrameWidth == 0
-            ? "no frame scanned yet"
-            : $"{engine.FrameWidth}x{engine.FrameHeight}")}");
-        output.WriteLine($"Cadence:   {engine.ScanInterval.TotalMilliseconds:0} ms per scan");
-        output.WriteLine($"ROIs:      {string.Join(", ", rois.Select(r => r.Id))}");
-        output.WriteLine();
-        output.WriteLine("Running. Ctrl+C to quit.");
-        output.WriteLine();
     }
 
     private static void WriteSummary(IGameCapturePlugin plugin, List<CaptureRecord> records,
