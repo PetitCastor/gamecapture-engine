@@ -1,0 +1,830 @@
+﻿{
+  "Name": "capture.proto",
+  "Package": "capture",
+  "Services": [
+    {
+      "FullName": "capture.CaptureEngineService",
+      "Methods": [
+        {
+          "Name": "Track",
+          "InputType": "capture.TrackRequest",
+          "OutputType": "capture.TrackResponse",
+          "IsClientStreaming": true,
+          "IsServerStreaming": true
+        },
+        {
+          "Name": "ReadRoi",
+          "InputType": "capture.ReadRoiRequest",
+          "OutputType": "capture.ReadRoiResponse",
+          "IsClientStreaming": false,
+          "IsServerStreaming": false
+        },
+        {
+          "Name": "DumpFrame",
+          "InputType": "capture.DumpFrameRequest",
+          "OutputType": "capture.DumpFrameResponse",
+          "IsClientStreaming": false,
+          "IsServerStreaming": false
+        },
+        {
+          "Name": "GetStatus",
+          "InputType": "capture.StatusRequest",
+          "OutputType": "capture.StatusResponse",
+          "IsClientStreaming": false,
+          "IsServerStreaming": false
+        }
+      ]
+    }
+  ],
+  "Messages": [
+    {
+      "FullName": "capture.Rect",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "x",
+          "JsonName": "x",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "y",
+          "JsonName": "y",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "width",
+          "JsonName": "width",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "height",
+          "JsonName": "height",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.RectF",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "x",
+          "JsonName": "x",
+          "Type": "Double",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "y",
+          "JsonName": "y",
+          "Type": "Double",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "width",
+          "JsonName": "width",
+          "Type": "Double",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "height",
+          "JsonName": "height",
+          "Type": "Double",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.RoiSpec",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "id",
+          "JsonName": "id",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "rect",
+          "JsonName": "rect",
+          "Type": "Message",
+          "MessageType": "capture.Rect",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "scale",
+          "JsonName": "scale",
+          "Type": "Double",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "mode",
+          "JsonName": "mode",
+          "Type": "Enum",
+          "MessageType": null,
+          "EnumType": "capture.RoiMode",
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.Hello",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "client_name",
+          "JsonName": "clientName",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "protocol_version",
+          "JsonName": "protocolVersion",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.RoiSetUpdate",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "rois",
+          "JsonName": "rois",
+          "Type": "Message",
+          "MessageType": "capture.RoiSpec",
+          "EnumType": null,
+          "Label": "Repeated",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.TrackRequest",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "hello",
+          "JsonName": "hello",
+          "Type": "Message",
+          "MessageType": "capture.Hello",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": "msg"
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "rois",
+          "JsonName": "rois",
+          "Type": "Message",
+          "MessageType": "capture.RoiSetUpdate",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": "msg"
+        }
+      ]
+    },
+    {
+      "FullName": "capture.OcrWord",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "text",
+          "JsonName": "text",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "crop_rect",
+          "JsonName": "cropRect",
+          "Type": "Message",
+          "MessageType": "capture.RectF",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.OcrLine",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "text",
+          "JsonName": "text",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "words",
+          "JsonName": "words",
+          "Type": "Message",
+          "MessageType": "capture.OcrWord",
+          "EnumType": null,
+          "Label": "Repeated",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.RoiResult",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "roi_id",
+          "JsonName": "roiId",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "frame_rect",
+          "JsonName": "frameRect",
+          "Type": "Message",
+          "MessageType": "capture.Rect",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "effective_scale",
+          "JsonName": "effectiveScale",
+          "Type": "Double",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "text",
+          "JsonName": "text",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 5,
+          "Name": "lines",
+          "JsonName": "lines",
+          "Type": "Message",
+          "MessageType": "capture.OcrLine",
+          "EnumType": null,
+          "Label": "Repeated",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 6,
+          "Name": "pixels_bgra",
+          "JsonName": "pixelsBgra",
+          "Type": "Bytes",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 7,
+          "Name": "pixels_stride",
+          "JsonName": "pixelsStride",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 8,
+          "Name": "pixels_width",
+          "JsonName": "pixelsWidth",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 9,
+          "Name": "pixels_height",
+          "JsonName": "pixelsHeight",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 10,
+          "Name": "error",
+          "JsonName": "error",
+          "Type": "Bool",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 11,
+          "Name": "error_message",
+          "JsonName": "errorMessage",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 12,
+          "Name": "kind",
+          "JsonName": "kind",
+          "Type": "Enum",
+          "MessageType": null,
+          "EnumType": "capture.RoiResultKind",
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.TickResult",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "timestamp_ms",
+          "JsonName": "timestampMs",
+          "Type": "Int64",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "frame_seq",
+          "JsonName": "frameSeq",
+          "Type": "UInt64",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "frame_width",
+          "JsonName": "frameWidth",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "frame_height",
+          "JsonName": "frameHeight",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 5,
+          "Name": "manual",
+          "JsonName": "manual",
+          "Type": "Bool",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 6,
+          "Name": "results",
+          "JsonName": "results",
+          "Type": "Message",
+          "MessageType": "capture.RoiResult",
+          "EnumType": null,
+          "Label": "Repeated",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.TrackResponse",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "tick",
+          "JsonName": "tick",
+          "Type": "Message",
+          "MessageType": "capture.TickResult",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": "msg"
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "hello_ack",
+          "JsonName": "helloAck",
+          "Type": "Message",
+          "MessageType": "capture.HelloAck",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": "msg"
+        }
+      ]
+    },
+    {
+      "FullName": "capture.HelloAck",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "negotiated_protocol_version",
+          "JsonName": "negotiatedProtocolVersion",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "engine_version",
+          "JsonName": "engineVersion",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "frame_width",
+          "JsonName": "frameWidth",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "frame_height",
+          "JsonName": "frameHeight",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 5,
+          "Name": "replay_mode",
+          "JsonName": "replayMode",
+          "Type": "Bool",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.ReadRoiRequest",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "roi",
+          "JsonName": "roi",
+          "Type": "Message",
+          "MessageType": "capture.RoiSpec",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.ReadRoiResponse",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "no_frame",
+          "JsonName": "noFrame",
+          "Type": "Bool",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "result",
+          "JsonName": "result",
+          "Type": "Message",
+          "MessageType": "capture.RoiResult",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "frame_width",
+          "JsonName": "frameWidth",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "frame_height",
+          "JsonName": "frameHeight",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.DumpFrameRequest",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "full_frame",
+          "JsonName": "fullFrame",
+          "Type": "Bool",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "roi",
+          "JsonName": "roi",
+          "Type": "Message",
+          "MessageType": "capture.Rect",
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "prefix",
+          "JsonName": "prefix",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.DumpFrameResponse",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "no_frame",
+          "JsonName": "noFrame",
+          "Type": "Bool",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "path",
+          "JsonName": "path",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    },
+    {
+      "FullName": "capture.StatusRequest",
+      "Fields": []
+    },
+    {
+      "FullName": "capture.StatusResponse",
+      "Fields": [
+        {
+          "FieldNumber": 1,
+          "Name": "engine_version",
+          "JsonName": "engineVersion",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 2,
+          "Name": "frame_width",
+          "JsonName": "frameWidth",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 3,
+          "Name": "frame_height",
+          "JsonName": "frameHeight",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 4,
+          "Name": "frame_seq",
+          "JsonName": "frameSeq",
+          "Type": "UInt64",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 5,
+          "Name": "replay_mode",
+          "JsonName": "replayMode",
+          "Type": "Bool",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 6,
+          "Name": "ocr_language",
+          "JsonName": "ocrLanguage",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 7,
+          "Name": "connected_clients",
+          "JsonName": "connectedClients",
+          "Type": "String",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Repeated",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 8,
+          "Name": "min_supported_protocol",
+          "JsonName": "minSupportedProtocol",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 9,
+          "Name": "max_supported_protocol",
+          "JsonName": "maxSupportedProtocol",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        },
+        {
+          "FieldNumber": 10,
+          "Name": "scan_interval_ms",
+          "JsonName": "scanIntervalMs",
+          "Type": "UInt32",
+          "MessageType": null,
+          "EnumType": null,
+          "Label": "Singular",
+          "Oneof": null
+        }
+      ]
+    }
+  ],
+  "Enums": [
+    {
+      "FullName": "capture.RoiMode",
+      "Values": [
+        {
+          "Number": 0,
+          "Name": "ROI_MODE_TEXT"
+        },
+        {
+          "Number": 1,
+          "Name": "ROI_MODE_DETAILED"
+        },
+        {
+          "Number": 2,
+          "Name": "ROI_MODE_PIXELS"
+        }
+      ]
+    },
+    {
+      "FullName": "capture.RoiResultKind",
+      "Values": [
+        {
+          "Number": 0,
+          "Name": "ROI_RESULT_KIND_UNSPECIFIED"
+        },
+        {
+          "Number": 1,
+          "Name": "ROI_RESULT_KIND_TEXT"
+        },
+        {
+          "Number": 2,
+          "Name": "ROI_RESULT_KIND_DETAILED"
+        },
+        {
+          "Number": 3,
+          "Name": "ROI_RESULT_KIND_PIXELS"
+        }
+      ]
+    }
+  ]
+}

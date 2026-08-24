@@ -5,6 +5,23 @@ owns capture, OCR, and pixel sampling; plugins own all game-semantic parsing and
 never share memory or a build — a plugin cannot take down capture, another plugin, or the process
 that owns the screen.
 
+## Working vocabulary
+
+The codebase and docs use the following words consistently:
+
+- **frame**: one captured image in frame space.
+- **tick**: one per-client result assembled from one frame.
+- **session**: one plugin host run connected to one engine channel.
+- **subscription**: one client's current ROI set on its `Track` stream.
+- **live**: a source backed by ongoing desktop capture.
+- **playback**: a finite or looping source backed by replay corpora or video.
+- **config**: persisted JSON settings read from disk.
+- **options**: runtime-only construction or CLI inputs.
+- **spec**: a declarative shape such as an ROI or sink entry.
+- **host**: the component that owns process/runtime composition.
+- **service**: an RPC or support component with a focused operational role.
+- **sink**: a plugin output destination for emitted capture records.
+
 ## Process diagram
 
 ```mermaid

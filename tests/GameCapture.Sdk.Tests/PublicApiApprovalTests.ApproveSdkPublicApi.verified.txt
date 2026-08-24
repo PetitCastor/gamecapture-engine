@@ -1,0 +1,318 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/PetitCastor/gamecapture-engine")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("GameCapture.Engine.Tests")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("GameCapture.Sdk.Testing")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("GameCapture.Sdk.Tests")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace GameCapture.Sdk
+{
+    public sealed class CaptureClient : System.IDisposable
+    {
+        public CaptureClient(string pipeName = "GameCapture.Engine") { }
+        public void Dispose() { }
+        public System.Threading.Tasks.Task<string?> DumpFrameAsync(GameCapture.Contracts.RoiRect? roi, string prefix, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<GameCapture.Sdk.EngineInfo> GetStatusAsync(System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<GameCapture.Contracts.OcrRegionResult?> ReadRoiAsync(GameCapture.Sdk.RoiSubscription roi, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<GameCapture.Sdk.TrackSession> TrackAsync(string clientName, System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.RoiSubscription> rois, System.Threading.CancellationToken sessionCt) { }
+        public System.Threading.Tasks.Task<GameCapture.Sdk.EngineInfo> WaitForEngineAsync(System.TimeSpan timeout, System.Threading.CancellationToken ct) { }
+    }
+    public sealed class CaptureRecord : System.IEquatable<GameCapture.Sdk.CaptureRecord>
+    {
+        public CaptureRecord(System.DateTime Timestamp, string Plugin, GameCapture.Sdk.TriggerKind Trigger, string RawText) { }
+        public System.Collections.Generic.IReadOnlyDictionary<string, string>? Fields { get; init; }
+        public GameCapture.Sdk.RecordKind Kind { get; init; }
+        public string Plugin { get; init; }
+        public string RawText { get; init; }
+        public System.DateTime Timestamp { get; init; }
+        public GameCapture.Sdk.TriggerKind Trigger { get; init; }
+    }
+    public sealed class ChangeDedupeSink : GameCapture.Sdk.IRecordSink, System.IAsyncDisposable
+    {
+        public ChangeDedupeSink(GameCapture.Sdk.IRecordSink inner) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask EmitAsync(GameCapture.Sdk.CaptureRecord record, System.Threading.CancellationToken ct) { }
+    }
+    public static class ConfigSeed
+    {
+        public static string Ensure(System.Reflection.Assembly assembly, string resourceName, string path) { }
+        public static string EnsureInLocalAppData(System.Reflection.Assembly assembly, string resourceName, string pluginFolder, string fileName = "config.json") { }
+    }
+    public sealed class ConsoleSink : GameCapture.Sdk.IPluginOutput, System.IDisposable
+    {
+        public ConsoleSink() { }
+        public void Dispose() { }
+        public void UpdateStatus(string statusText) { }
+        public void WriteLine(string message = "") { }
+    }
+    public sealed class CsvRecordSink : GameCapture.Sdk.IRecordSink, System.IAsyncDisposable
+    {
+        public CsvRecordSink(string path, System.Collections.Generic.IReadOnlyList<string> fieldColumns, System.Func<bool> isReplay, bool recordClears = false) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask EmitAsync(GameCapture.Sdk.CaptureRecord record, System.Threading.CancellationToken ct) { }
+    }
+    public static class EngineDefaults
+    {
+        public const int MaxPixelBytes = 262144;
+        public const string PipeName = "GameCapture.Engine";
+        public const string PixelChannelOrder = "BGRA";
+        public const int ReferenceHeight = 1440;
+        public const int ReferenceWidth = 2560;
+        public static readonly System.TimeSpan DefaultScanInterval;
+    }
+    public sealed class EngineInfo : System.IEquatable<GameCapture.Sdk.EngineInfo>
+    {
+        public EngineInfo(string EngineVersion, uint NegotiatedProtocol, int FrameWidth, int FrameHeight, bool ReplayMode, string OcrLanguage, System.Collections.Generic.IReadOnlyList<string> ConnectedClients, System.TimeSpan ScanInterval) { }
+        public System.Collections.Generic.IReadOnlyList<string> ConnectedClients { get; init; }
+        public string EngineVersion { get; init; }
+        public int FrameHeight { get; init; }
+        public int FrameWidth { get; init; }
+        public uint NegotiatedProtocol { get; init; }
+        public string OcrLanguage { get; init; }
+        public bool ReplayMode { get; init; }
+        public System.TimeSpan ScanInterval { get; init; }
+    }
+    public sealed class EngineUnavailableException : GameCapture.Sdk.GameCaptureException
+    {
+        public EngineUnavailableException(string message, System.Exception? innerException = null) { }
+    }
+    public class GameCaptureException : System.Exception
+    {
+        public GameCaptureException(string message) { }
+        public GameCaptureException(string message, System.Exception? innerException) { }
+    }
+    public static class GameCapturePluginHost
+    {
+        public static System.Threading.Tasks.Task<int> RunAsync(GameCapture.Sdk.IGameCapturePlugin plugin, string[] args, GameCapture.Sdk.PluginHostOptions? options = null) { }
+    }
+    public sealed class HttpRecordSink : GameCapture.Sdk.IRecordSink, System.IAsyncDisposable
+    {
+        public HttpRecordSink(System.Uri endpoint, System.Func<bool> isReplay, bool recordClears = false, System.Net.Http.HttpClient? client = null, System.TimeSpan? timeout = default) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask EmitAsync(GameCapture.Sdk.CaptureRecord record, System.Threading.CancellationToken ct) { }
+    }
+    public interface IGameCapturePlugin
+    {
+        GameCapture.Sdk.RoiErrorPolicy ErrorPolicy { get; }
+        string Name { get; }
+        System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.RoiSubscription> Rois { get; }
+        System.Threading.Tasks.Task OnManualTickAsync(GameCapture.Sdk.TickContext ctx, System.Threading.CancellationToken ct);
+        void OnSessionEvent(GameCapture.Sdk.SessionEvent evt);
+        System.Threading.Tasks.Task OnTickAsync(GameCapture.Sdk.TickContext ctx, System.Threading.CancellationToken ct);
+        System.Collections.Generic.IEnumerable<string> SummaryLines();
+    }
+    public interface IOverlaySinkFactory
+    {
+        GameCapture.Sdk.IRecordSink Create(GameCapture.Sdk.OverlaySpec spec, GameCapture.Sdk.IPluginOutput log);
+    }
+    public interface IPluginOutput
+    {
+        void UpdateStatus(string statusText);
+        void WriteLine(string message = "");
+    }
+    public interface IPluginServices
+    {
+        GameCapture.Sdk.EngineInfo Engine { get; }
+        System.Threading.Tasks.Task<string?> DumpFrameAsync(GameCapture.Contracts.RoiRect? roi, string prefix, System.Threading.CancellationToken ct);
+        void Emit(GameCapture.Sdk.CaptureRecord record);
+        void EmitCleared(System.DateTime timestamp, string plugin);
+        void Log(string message);
+        void LogVerbose(string message);
+        System.Threading.Tasks.Task<GameCapture.Contracts.OcrRegionResult?> ReadRoiAsync(GameCapture.Sdk.RoiSubscription roi, System.Threading.CancellationToken ct);
+    }
+    public interface IRecordSink : System.IAsyncDisposable
+    {
+        System.Threading.Tasks.ValueTask EmitAsync(GameCapture.Sdk.CaptureRecord record, System.Threading.CancellationToken ct);
+    }
+    public sealed class JsonRecordSink : GameCapture.Sdk.IRecordSink, System.IAsyncDisposable
+    {
+        public JsonRecordSink(string path, System.Func<bool> isReplay, bool recordClears = false) { }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Threading.Tasks.ValueTask EmitAsync(GameCapture.Sdk.CaptureRecord record, System.Threading.CancellationToken ct) { }
+    }
+    public enum OverlayAnchor
+    {
+        TopCenter = 0,
+        Custom = 1,
+    }
+    public sealed class OverlaySpec
+    {
+        public OverlaySpec() { }
+        public GameCapture.Sdk.OverlayAnchor Anchor { get; set; }
+        public int BackgroundAlpha { get; set; }
+        public string BackgroundColor { get; set; }
+        public int CornerRadius { get; set; }
+        public string FontFamily { get; set; }
+        public float FontSize { get; set; }
+        public string ForegroundColor { get; set; }
+        public int Height { get; set; }
+        public int LingerMs { get; set; }
+        public int OffsetX { get; set; }
+        public int OffsetY { get; set; }
+        public int Padding { get; set; }
+        public string Template { get; set; }
+        public int Width { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+    }
+    public abstract class PluginConfig
+    {
+        protected PluginConfig() { }
+        public int ConfigVersion { get; set; }
+        public System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.SinkSpec> Outputs { get; set; }
+        public string PipeName { get; set; }
+        public bool SaveDebugFrames { get; set; }
+        protected virtual void AfterLoad(string configPath) { }
+        public static T Load<T>(string path)
+            where T : GameCapture.Sdk.PluginConfig, new () { }
+        protected static string ResolveAgainstConfig(string path, string configPath) { }
+    }
+    public sealed class PluginHostOptions
+    {
+        public PluginHostOptions() { }
+        public GameCapture.Sdk.PluginConfig? Config { get; init; }
+        public string? ConfigFileName { get; init; }
+        public System.TimeSpan EngineWait { get; init; }
+        public System.Func<System.Collections.Generic.IReadOnlyList<string>, string?>? ExtraArgHandler { get; init; }
+        public bool HandleCancelKeyPress { get; init; }
+        public GameCapture.Sdk.IPluginOutput? Output { get; init; }
+        public GameCapture.Sdk.IOverlaySinkFactory? OverlayFactory { get; init; }
+        public System.TimeSpan ReconnectDelay { get; init; }
+        public System.Action<GameCapture.Sdk.CaptureRecord>? RecordSink { get; init; }
+        public System.Threading.CancellationToken ShutdownToken { get; init; }
+        public System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.IRecordSink>? Sinks { get; init; }
+    }
+    public sealed class ProtocolMismatchException : GameCapture.Sdk.GameCaptureException
+    {
+        public ProtocolMismatchException(uint engineMin, uint engineMax, uint sdkVersion, System.Exception? innerException = null) { }
+        public uint EngineMax { get; }
+        public uint EngineMin { get; }
+        public uint SdkVersion { get; }
+    }
+    public enum RecordKind
+    {
+        Observation = 0,
+        Cleared = 1,
+    }
+    public enum RoiErrorPolicy
+    {
+        AbortTick = 0,
+        SkipErrored = 1,
+        PassThrough = 2,
+    }
+    public readonly struct RoiId : System.IEquatable<GameCapture.Sdk.RoiId>
+    {
+        public RoiId(string Value) { }
+        public string Value { get; }
+        public bool Equals(GameCapture.Sdk.RoiId other) { }
+        public override int GetHashCode() { }
+        public override string ToString() { }
+        public static GameCapture.Sdk.RoiId op_Implicit(string value) { }
+    }
+    public enum RoiKind
+    {
+        Text = 0,
+        Detailed = 1,
+        Pixels = 2,
+    }
+    public enum RoiStatus
+    {
+        Ok = 0,
+        Failed = 1,
+        NotSubscribed = 2,
+    }
+    public sealed class RoiSubscription : System.IEquatable<GameCapture.Sdk.RoiSubscription>
+    {
+        public RoiSubscription(GameCapture.Sdk.RoiId Id, GameCapture.Contracts.RoiRect Rect, double Scale, GameCapture.Sdk.RoiKind Kind) { }
+        public GameCapture.Sdk.RoiId Id { get; init; }
+        public GameCapture.Sdk.RoiKind Kind { get; init; }
+        public GameCapture.Contracts.RoiRect Rect { get; init; }
+        public double Scale { get; init; }
+    }
+    public abstract class SessionEvent : System.IEquatable<GameCapture.Sdk.SessionEvent>
+    {
+        public sealed class Connected : GameCapture.Sdk.SessionEvent, System.IEquatable<GameCapture.Sdk.SessionEvent.Connected>
+        {
+            public Connected(GameCapture.Sdk.EngineInfo Engine) { }
+            public GameCapture.Sdk.EngineInfo Engine { get; init; }
+        }
+        public sealed class Ended : GameCapture.Sdk.SessionEvent, System.IEquatable<GameCapture.Sdk.SessionEvent.Ended>
+        {
+            public Ended(GameCapture.Sdk.StreamEndReason Reason) { }
+            public GameCapture.Sdk.StreamEndReason Reason { get; init; }
+        }
+        public sealed class Reconnecting : GameCapture.Sdk.SessionEvent, System.IEquatable<GameCapture.Sdk.SessionEvent.Reconnecting>
+        {
+            public Reconnecting(int Attempt) { }
+            public int Attempt { get; init; }
+        }
+        public sealed class TicksDropped : GameCapture.Sdk.SessionEvent, System.IEquatable<GameCapture.Sdk.SessionEvent.TicksDropped>
+        {
+            public TicksDropped(ulong Gap) { }
+            public ulong Gap { get; init; }
+        }
+    }
+    public sealed class SessionFaultedException : GameCapture.Sdk.GameCaptureException
+    {
+        public SessionFaultedException(string message, System.Exception? innerException = null) { }
+    }
+    public sealed class SinkSpec
+    {
+        public SinkSpec() { }
+        public System.Collections.Generic.IReadOnlyList<string>? Columns { get; set; }
+        public bool DedupeOnChange { get; set; }
+        public GameCapture.Sdk.OverlaySpec? Overlay { get; set; }
+        public string? Path { get; set; }
+        public bool RecordClears { get; set; }
+        public int TimeoutSeconds { get; set; }
+        public string Type { get; set; }
+        public string? Url { get; set; }
+    }
+    public enum StreamEndReason
+    {
+        ReplayCompleted = 0,
+        EngineShutdown = 1,
+        Faulted = 2,
+        Cancelled = 3,
+    }
+    public sealed class TickContext
+    {
+        public GameCapture.Sdk.IPluginServices Services { get; }
+        public GameCapture.Sdk.TickData Tick { get; }
+        public static GameCapture.Sdk.TickContext ForTesting(GameCapture.Sdk.TickData tick, GameCapture.Sdk.IPluginServices services) { }
+    }
+    public sealed class TickData
+    {
+        public System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.RoiId> ErroredRois { get; }
+        public int FrameHeight { get; }
+        public ulong FrameSeq { get; }
+        public int FrameWidth { get; }
+        public bool HasErrors { get; }
+        public bool Manual { get; }
+        public System.DateTime Timestamp { get; }
+        [System.Obsolete("Renamed: use ErrorMessage, or Status for the failed/absent distinction.")]
+        public string? Error(GameCapture.Sdk.RoiId roiId) { }
+        public string? ErrorMessage(GameCapture.Sdk.RoiId roiId) { }
+        [System.Obsolete("Use TryGetOcr/Status.")]
+        public GameCapture.Contracts.OcrRegionResult? Ocr(GameCapture.Sdk.RoiId roiId) { }
+        [System.Obsolete("Use TryGetPixels/Status.")]
+        public GameCapture.Contracts.PixelPatchSampler? Pixels(GameCapture.Sdk.RoiId roiId) { }
+        public GameCapture.Sdk.RoiStatus Status(GameCapture.Sdk.RoiId roiId) { }
+        [System.Obsolete("Ambiguous on failure: use TryGetText/Status.")]
+        public string Text(GameCapture.Sdk.RoiId roiId) { }
+        public bool TryGetOcr(GameCapture.Sdk.RoiId roiId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out GameCapture.Contracts.OcrRegionResult? ocr) { }
+        public bool TryGetPixels(GameCapture.Sdk.RoiId roiId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out GameCapture.Contracts.PixelPatchSampler? pixels) { }
+        public bool TryGetText(GameCapture.Sdk.RoiId roiId, out string text) { }
+    }
+    public sealed class TrackSession : System.IAsyncDisposable
+    {
+        public string EngineVersion { get; }
+        public uint NegotiatedProtocol { get; }
+        public System.Threading.Tasks.ValueTask DisposeAsync() { }
+        public System.Collections.Generic.IAsyncEnumerable<GameCapture.Sdk.TickData> Ticks([System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task UpdateRoisAsync(System.Collections.Generic.IReadOnlyList<GameCapture.Sdk.RoiSubscription> rois) { }
+    }
+    public enum TriggerKind
+    {
+        Auto = 0,
+        Manual = 1,
+    }
+}
