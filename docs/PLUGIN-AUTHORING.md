@@ -565,7 +565,9 @@ disagree: check `config.json` against `%LOCALAPPDATA%\GameCapture\engine-config.
 ## 9. Config, CLI, and compatibility
 
 **Config.** `PluginConfig` carries the three settings every plugin has — `pipeName` (must match the
-engine's), `saveDebugFrames`, and `outputs` ([Outputs: sinks](#outputs-sinks)). Derive to add your
+engine's), `saveDebugFrames`, and `outputs` ([Outputs: sinks](#outputs-sinks)) — plus
+`configVersion`, which is bookkeeping for `ConfigSeed` rather than a setting anyone edits (see
+below). Derive to add your
 own; `PluginConfig.Load<T>(path)` writes a
 defaults file on first run so settings are discoverable without documentation, and `AfterLoad` is
 the hook for anything that must resolve relative to the config file's own location (a ledger path,
@@ -595,6 +597,34 @@ the only party that knows it and needs the typed instance back anyway.
 Everything about *how* the screen is read — monitor, hotkey, OCR language, scan cadence — belongs to
 the engine's config. A plugin that grew those knobs would be describing a capture stack it no longer
 owns.
+
+**Shipping defaults users have already run past.** A plugin that ships its `config.json` as an
+embedded resource and copies it out on first run has a hole: a default added *later* never reaches
+anyone who has run the plugin once. Nothing reports it either — `SinkFactory` routes a sink the user
+has no entry for to a no-op, so the feature is absent rather than broken. `ConfigSeed` closes it:
+
+```csharp
+// UserConfig.cs — replaces the hand-rolled "write it if the file is missing" block
+public static string Ensure() =>
+    ConfigSeed.EnsureInLocalAppData(typeof(UserConfig).Assembly, "MyPlugin.config.json", "MyPlugin");
+```
+
+Seeding still happens on first run. Beyond that, `ConfigSeed` compares the `configVersion` in the
+embedded default against the one in the user's file, and on a bump adds only what the user's file
+lacks — leaving every value they already set alone. So to ship a new default, add it to the embedded
+`config.json` *and* bump its `configVersion`.
+
+The stamp is written back whether or not anything was added, which is the part that matters: each
+new default is offered exactly **once**. A user who deletes it afterwards keeps it deleted, because
+the stamp already matches. Two consequences worth knowing before relying on it:
+
+- Outputs are matched on `type` alone. Someone who repointed the stock `json` sink at their own path
+  is making a choice, not missing a default — matching on type keeps a second one from appearing
+  beside theirs and quietly double-writing. The cost is that a default adding a *second* sink of a
+  type the user already has is skipped.
+- A config file edited into invalid JSON is left exactly as it is, for `Load<T>` to report. Omitting
+  `configVersion` from the embedded default (version 0) opts out entirely and keeps the old
+  first-run-only behaviour.
 
 **CLI.** The host parses `--pipe <name>` (overriding the config) and `--verbose` for every plugin.
 For flags of your own, use `PluginHostOptions.ExtraArgHandler`: it is handed the whole argument list

@@ -1,0 +1,19 @@
+{
+  "configVersion": 2,
+  "pipeName": "GameCapture.Engine",
+  "saveDebugFrames": false,
+  "outputs": [
+    {
+      "type": "json",
+      "path": "captures/records.jsonl",
+      "dedupeOnChange": true
+    },
+    {
+      "type": "overlay",
+      "overlay": {
+        "template": "{name} x{count}",
+        "lingerMs": 5000
+      }
+    }
+  ]
+}

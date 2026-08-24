@@ -29,6 +29,17 @@ public abstract class PluginConfig
     /// </summary>
     public IReadOnlyList<SinkSpec> Outputs { get; set; } = [];
 
+    /// <summary>
+    /// Which generation of the plugin's embedded defaults this file has already been offered.
+    /// Bumping it in the embedded default is how <see cref="ConfigSeed"/> is told that a new
+    /// default exists; zero means the plugin has not opted in.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="ConfigSeed"/> reads it, and only to decide whether to merge. Nothing here
+    /// branches on it — this is not a schema version, and an older file is never invalid.
+    /// </remarks>
+    public int ConfigVersion { get; set; }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,

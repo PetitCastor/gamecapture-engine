@@ -21,6 +21,14 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- Stand-in plugin defaults for ConfigSeedTests. Explicit logical names: the tests name these
+       strings, and the convention-derived name would change if the folder were ever renamed. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Configs\seed-v1.json" LogicalName="Seed.v1.json" />
+    <EmbeddedResource Include="Configs\seed-v2.json" LogicalName="Seed.v2.json" />
+    <EmbeddedResource Include="Configs\seed-unversioned.json" LogicalName="Seed.unversioned.json" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\GameCapture.Sdk\GameCapture.Sdk.csproj" />
     <!-- Ticks are built here from the wire type the engine would have sent, so the contracts are
