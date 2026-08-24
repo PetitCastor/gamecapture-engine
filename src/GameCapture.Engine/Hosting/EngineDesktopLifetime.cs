@@ -84,7 +84,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
     /// <summary>Starts metrics and tray services after the console startup banner is complete.</summary>
     public void Start()
     {
-        if (!_sourceSelection.IsLivePaced)
+        if (!_sourceSelection.Source.Mode.IsInteractive())
             return;
 
         // Created after the banner so it disposes before the sink: the timer is fully stopped
@@ -188,7 +188,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
 
     private void InitializeHotkey()
     {
-        if (!_sourceSelection.IsLivePaced)
+        if (!_sourceSelection.Source.Mode.IsInteractive())
             return;
 
         var (modifiers, virtualKey) = HotkeyListener.ParseHotkey(_config.Hotkey);

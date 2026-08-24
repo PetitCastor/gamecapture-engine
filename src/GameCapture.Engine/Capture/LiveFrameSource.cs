@@ -1,5 +1,3 @@
-using Windows.Graphics.Imaging;
-
 namespace GameCapture.Engine;
 
 /// <summary>
@@ -13,19 +11,19 @@ internal sealed class LiveFrameSource : IFrameSource
 
     public LiveFrameSource(MonitorCapture capture) => _capture = capture;
 
-    public bool IsReplay => false;
+    public FrameSourceMode Mode => FrameSourceMode.LiveCapture;
 
-    public async Task<SoftwareBitmap?> NextFrameAsync(CancellationToken ct)
+    public async ValueTask<FrameReadResult> ReadFrameAsync(CancellationToken ct)
     {
         var frame = _capture.TakeLatestFrame();
         if (frame is null)
-            return null; // idle screen: the loop owns the retry delay
+            return FrameReadResult.Idle; // idle screen: the loop owns the retry delay
 
         // The GPU frame is only a staging buffer for the CPU copy; releasing it immediately
         // returns the slot to the frame pool, exactly as the monolith's scan loop did.
         try
         {
-            return await OcrPipeline.ToSoftwareBitmapAsync(frame);
+            return FrameReadResult.Frame(await OcrPipeline.ToSoftwareBitmapAsync(frame));
         }
         finally
         {

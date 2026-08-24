@@ -10,12 +10,13 @@ namespace GameCapture.Engine;
 /// <see cref="MediaComposition.GetThumbnailAsync"/> and hands the scan loop one
 /// <see cref="SoftwareBitmap"/> per sampled timestamp. Pull-based on demand, like
 /// <see cref="ReplayFrameSource"/> — nothing is buffered ahead — so deterministic stepping (mode A)
-/// and wall-clock pacing (mode B) are the same decode path with a different wait in front of it.
+/// and monotonic realtime pacing (mode B) are the same decode path with a different wait in front
+/// of it.
 /// </summary>
 /// <remarks>
-/// <see cref="IsReplay"/> is true in both modes, including realtime: a video, like a PNG corpus, is
-/// a finite source whose null means end of stream, not "screen went idle." Do not read
-/// <c>IsReplay == true</c> as "this is a PNG corpus" — see TASK-25.
+/// Videos use replay flow in both deterministic and realtime modes and distinguish end-of-stream
+/// from live-capture idle. Their explicit mode also preserves realtime video's interactive desktop
+/// controls without conflating those controls with scan-loop backpressure.
 /// </remarks>
 internal sealed class VideoFrameSource : IFrameSource
 {
@@ -23,7 +24,7 @@ internal sealed class VideoFrameSource : IFrameSource
     private readonly VideoFrameSourceOptions _options;
     private readonly TimeSpan _duration;
     private TimeSpan _next = TimeSpan.Zero;
-    private DateTime? _pacingStartedAt;
+    private long? _pacingStartedAtTimestamp;
 
     /// <summary>Native frame width, probed from the file at construction.</summary>
     public int Width { get; }
@@ -41,33 +42,51 @@ internal sealed class VideoFrameSource : IFrameSource
     /// </summary>
     public double NativeFrameRate { get; }
 
-    /// <param name="path">MP4 file, opened and probed synchronously so a bad path fails at startup
-    /// with a message, like <c>--replay</c>'s directory check.</param>
-    public VideoFrameSource(string path, VideoFrameSourceOptions options)
+    private VideoFrameSource(
+        MediaComposition composition,
+        VideoFrameSourceOptions options,
+        TimeSpan duration,
+        int width,
+        int height,
+        double frameRate)
     {
+        _composition = composition;
         _options = options;
-
-        var opened = OpenAsync(path).GetAwaiter().GetResult();
-        _composition = opened.Composition;
-        _duration = opened.Duration;
-        Width = opened.Width;
-        Height = opened.Height;
-        NativeFrameRate = opened.FrameRate;
+        _duration = duration;
+        Width = width;
+        Height = height;
+        NativeFrameRate = frameRate;
     }
 
-    public bool IsReplay => true;
+    /// <param name="path">MP4 file, opened and probed asynchronously so a bad path still fails at
+    /// startup with a message, like <c>--replay</c>'s directory check.</param>
+    public static async Task<VideoFrameSource> CreateAsync(string path, VideoFrameSourceOptions options)
+    {
+        var opened = await OpenAsync(path);
+        return new VideoFrameSource(
+            opened.Composition,
+            options,
+            opened.Duration,
+            opened.Width,
+            opened.Height,
+            opened.FrameRate);
+    }
 
-    public async Task<SoftwareBitmap?> NextFrameAsync(CancellationToken ct)
+    public FrameSourceMode Mode => _options.Realtime
+        ? FrameSourceMode.RealtimeVideo
+        : FrameSourceMode.DeterministicVideo;
+
+    public async ValueTask<FrameReadResult> ReadFrameAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
         if (_next >= _duration)
         {
             if (!_options.Loop)
-                return null; // end of stream
+                return FrameReadResult.EndOfStream; // end of stream
 
             _next = TimeSpan.Zero;
-            _pacingStartedAt = null; // wrap re-anchors realtime pacing to "now"
+            _pacingStartedAtTimestamp = null; // wrap re-anchors realtime pacing to "now"
         }
 
         if (_options.Realtime)
@@ -80,18 +99,19 @@ internal sealed class VideoFrameSource : IFrameSource
             .GetThumbnailAsync(timestamp, Width, Height, VideoFramePrecision.NearestFrame)
             .AsTask(ct);
         var decoder = await BitmapDecoder.CreateAsync(thumbnail).AsTask(ct);
-        return await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore).AsTask(ct);
+        return FrameReadResult.Frame(
+            await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore).AsTask(ct));
     }
 
-    /// <summary>Waits until the frame at <see cref="_next"/> is due against a wall clock anchored
-    /// at the first realtime call (or the last loop wrap).</summary>
+    /// <summary>Waits until the frame at <see cref="_next"/> is due against a monotonic clock
+    /// anchored at the first realtime call (or the last loop wrap).</summary>
     private async Task PaceAsync(CancellationToken ct)
     {
-        _pacingStartedAt ??= DateTime.UtcNow;
-        var due = _pacingStartedAt.Value + _next;
-        var wait = due - DateTime.UtcNow;
+        _pacingStartedAtTimestamp ??= _options.TimeProvider.GetTimestamp();
+        var elapsed = _options.TimeProvider.GetElapsedTime(_pacingStartedAtTimestamp.Value);
+        var wait = _next - elapsed;
         if (wait > TimeSpan.Zero)
-            await Task.Delay(wait, ct);
+            await Task.Delay(wait, _options.TimeProvider, ct);
     }
 
     public void Dispose()

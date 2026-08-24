@@ -98,21 +98,31 @@ internal sealed class ScanLoop : IDisposable
     {
         try
         {
-            if (_source.IsReplay)
+            if (_source.Mode.UsesReplayFlow())
                 await _registry.WaitForAnySubscribedAsync(ct); // don't burn frames into the void
 
             while (!ct.IsCancellationRequested)
             {
-                var bitmap = await _source.NextFrameAsync(ct);
-                if (bitmap is null)
+                var read = await _source.ReadFrameAsync(ct);
+                SoftwareBitmap bitmap;
+                switch (read.Status)
                 {
-                    if (_source.IsReplay)
-                        break; // corpus exhausted
+                    case FrameReadStatus.Idle when read.Bitmap is null:
+                        await Task.Delay(IdleRetry, ct);
+                        continue;
 
-                    await Task.Delay(IdleRetry, ct);
-                    continue;
+                    case FrameReadStatus.FrameReady when read.Bitmap is { } frame:
+                        bitmap = frame;
+                        break;
+
+                    case FrameReadStatus.EndOfStream when read.Bitmap is null:
+                        return; // finite source exhausted
+
+                    default:
+                        read.Bitmap?.Dispose();
+                        throw new InvalidOperationException(
+                            $"Frame source returned invalid {read.Status} status/payload combination.");
                 }
-
                 _seq++;
 
                 // Read once for the whole tick: two clients must not disagree about whether the
@@ -146,7 +156,7 @@ internal sealed class ScanLoop : IDisposable
                             tick.Results.Add(await ReadOneAsync(bitmap, spec));
 
                         var response = new TrackResponse { Tick = tick };
-                        if (_source.IsReplay)
+                        if (_source.Mode.UsesReplayFlow())
                         {
                             // Backpressure: determinism first. Unlike the live TryWrite, this
                             // write can fail — a plugin that disposes its session (or dies) has
@@ -179,7 +189,7 @@ internal sealed class ScanLoop : IDisposable
 
                 // Replay runs flat out: the corpus is finite and the cadence is a live-capture
                 // concern, not a semantic one.
-                if (!_source.IsReplay)
+                if (!_source.Mode.UsesReplayFlow())
                     await Task.Delay(_scanInterval, ct);
             }
         }

@@ -38,16 +38,19 @@ public class FrameDumpServiceTests
 
             for (var i = 0; i < 3; i++)
             {
-                using var loaded = await replay.NextFrameAsync(CancellationToken.None);
-                Assert.NotNull(loaded);
-                Assert.Equal(width, loaded.PixelWidth);
-                Assert.Equal(height, loaded.PixelHeight);
+                var loaded = await replay.ReadFrameAsync(CancellationToken.None);
+                Assert.Equal(FrameReadStatus.FrameReady, loaded.Status);
+                using var bitmap = loaded.Bitmap;
+                Assert.NotNull(bitmap);
+                Assert.Equal(width, bitmap.PixelWidth);
+                Assert.Equal(height, bitmap.PixelHeight);
                 Assert.Equal(frameNames[i], replay.LastFrameName);
             }
 
             // Corpus exhausted
-            var afterEnd = await replay.NextFrameAsync(CancellationToken.None);
-            Assert.Null(afterEnd);
+            var afterEnd = await replay.ReadFrameAsync(CancellationToken.None);
+            Assert.Equal(FrameReadStatus.EndOfStream, afterEnd.Status);
+            Assert.Null(afterEnd.Bitmap);
         }
         finally
         {

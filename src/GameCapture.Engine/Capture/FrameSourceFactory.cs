@@ -97,28 +97,25 @@ internal sealed class FrameSourceFactory
         return true;
     }
 
-    public FrameSourceSelection? Create(ConsoleSink sink, out string? error)
+    public async Task<FrameSourceCreationResult> CreateAsync(ConsoleSink sink)
     {
         if (_videoPath is not null)
-            return CreateVideo(out error);
+            return await CreateVideoAsync();
 
         if (_replayDirectory is not null)
         {
             var replay = new ReplayFrameSource(_replayDirectory);
-            error = null;
-            return new FrameSourceSelection(
+            return FrameSourceCreationResult.Success(new FrameSourceSelection(
                 replay,
                 $"Replay:    {replay.FrameCount} frame(s) from {_replayDirectory}",
-                IsLivePaced: false,
                 MonitorLabels: [],
-                CurrentMonitorIndex: 0);
+                CurrentMonitorIndex: 0));
         }
 
         var monitors = MonitorCapture.EnumerateMonitors();
         if (monitors.Count == 0)
         {
-            error = "No monitors found.";
-            return null;
+            return FrameSourceCreationResult.Failure("No monitors found.");
         }
 
         var monitorIndex = _config.MonitorIndex;
@@ -133,26 +130,25 @@ internal sealed class FrameSourceFactory
         if (!capture.BorderDisabled)
             sink.WriteLine("Note: OS refused to remove the yellow capture border (cosmetic only).");
 
-        error = null;
-        return new FrameSourceSelection(
-            new LiveFrameSource(capture),
+        var live = new LiveFrameSource(capture);
+        return FrameSourceCreationResult.Success(new FrameSourceSelection(
+            live,
             $"Capturing: [{monitorIndex}] {monitor.DeviceName} {monitor.Width}x{monitor.Height}",
-            IsLivePaced: true,
             MonitorLabels: monitors
                 .Select((item, index) =>
                     $"[{index}] {item.DeviceName} {item.Width}x{item.Height}{(item.IsPrimary ? " (primary)" : "")}")
                 .ToList(),
-            CurrentMonitorIndex: monitorIndex);
+            CurrentMonitorIndex: monitorIndex));
     }
 
-    private FrameSourceSelection? CreateVideo(out string? error)
+    private async Task<FrameSourceCreationResult> CreateVideoAsync()
     {
         var effectiveFps = _videoFps ?? 1000.0 / _config.ScanIntervalMs;
 
         VideoFrameSource video;
         try
         {
-            video = new VideoFrameSource(_videoPath!, new VideoFrameSourceOptions
+            video = await VideoFrameSource.CreateAsync(_videoPath!, new VideoFrameSourceOptions
             {
                 FrameInterval = TimeSpan.FromSeconds(1.0 / effectiveFps),
                 Realtime = _videoRealtime,
@@ -161,26 +157,24 @@ internal sealed class FrameSourceFactory
         }
         catch (Exception ex)
         {
-            error = $"Failed to open video '{_videoPath}': {ex.Message}";
-            return null;
+            return FrameSourceCreationResult.Failure(
+                $"Failed to open video '{_videoPath}': {ex.Message}");
         }
 
         if (video.NativeFrameRate > 0 && effectiveFps > video.NativeFrameRate)
         {
             video.Dispose();
-            error = $"--video-fps {effectiveFps:0.###} exceeds the video's native frame rate "
-                + $"({video.NativeFrameRate:0.###} fps).";
-            return null;
+            return FrameSourceCreationResult.Failure(
+                $"--video-fps {effectiveFps:0.###} exceeds the video's native frame rate "
+                    + $"({video.NativeFrameRate:0.###} fps).");
         }
 
-        error = null;
-        return new FrameSourceSelection(
+        return FrameSourceCreationResult.Success(new FrameSourceSelection(
             video,
             $"Video:     {_videoPath} {video.Width}x{video.Height}, {video.Duration:mm\\:ss\\.fff}, "
                 + $"{effectiveFps:0.###} fps [{(_videoRealtime ? "realtime" : "deterministic")}{(_videoLoop ? ", loop" : "")}]",
-            IsLivePaced: _videoRealtime,
             MonitorLabels: [],
-            CurrentMonitorIndex: 0);
+            CurrentMonitorIndex: 0));
     }
 
     private static string? ArgValue(IReadOnlyList<string> args, string name)

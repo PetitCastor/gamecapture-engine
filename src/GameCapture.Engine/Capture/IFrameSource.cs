@@ -1,5 +1,3 @@
-using Windows.Graphics.Imaging;
-
 namespace GameCapture.Engine;
 
 /// <summary>
@@ -10,17 +8,17 @@ namespace GameCapture.Engine;
 internal interface IFrameSource : IDisposable
 {
     /// <summary>
-    /// Next frame to scan, or null. Live: the latest WGC frame downloaded to CPU, null while the
-    /// screen is idle and no new frame has arrived. Replay: the next PNG, null when the corpus is
-    /// exhausted. The two nulls mean different things to the loop — hence <see cref="IsReplay"/>.
-    /// Caller owns the returned bitmap.
+    /// Next frame-state transition to scan. Live: the latest WGC frame downloaded to CPU, or
+    /// <see cref="FrameReadStatus.Idle"/> while the screen is idle and no new frame has arrived.
+    /// Replay/video: the next decoded frame, or <see cref="FrameReadStatus.EndOfStream"/> once the
+    /// finite source is exhausted. Caller owns the returned bitmap when status is
+    /// <see cref="FrameReadStatus.FrameReady"/>.
     /// </summary>
-    Task<SoftwareBitmap?> NextFrameAsync(CancellationToken ct);
+    ValueTask<FrameReadResult> ReadFrameAsync(CancellationToken ct);
 
     /// <summary>
-    /// True when frames come from a finite PNG corpus. Drives every determinism-vs-liveness
-    /// decision in the loop: end-of-stream handling, backpressure mode, and whether the loop
-    /// waits for a subscriber before burning frames.
+    /// The source category the loop is serving. Distinguishes live capture from finite replay
+    /// inputs without overloading a boolean that video also had to pretend to satisfy.
     /// </summary>
-    bool IsReplay { get; }
+    FrameSourceMode Mode { get; }
 }
