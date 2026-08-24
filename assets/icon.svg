@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <!-- Background / Base Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+
+    <!-- Glowing Eye & Beam Accent -->
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Base Icon Frame -->
+  <rect width="256" height="256" rx="56" fill="url(#bgGrad)"/>
+
+  <!-- Screen Capture Bracket Corners -->
+  <g stroke="#38bdf8" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Top-Left -->
+    <path d="M 48,80 V 56 H 80" />
+    <!-- Top-Right -->
+    <path d="M 176,56 H 208 V 80" />
+    <!-- Bottom-Left -->
+    <path d="M 48,176 V 200 H 80" />
+    <!-- Bottom-Right -->
+    <path d="M 176,200 H 208 V 176" />
+  </g>
+
+  <!-- Central Lens / Eye (Passive Capture) -->
+  <path d="M 64,128 C 90,88 166,88 192,128 C 166,168 90,168 64,128 Z" 
+        fill="none" 
+        stroke="url(#accentGrad)" 
+        stroke-width="12" 
+        stroke-linejoin="round"/>
+
+  <!-- Iris / OCR Core -->
+  <circle cx="128" cy="128" r="24" fill="#38bdf8"/>
+
+  <!-- Data Stream / Pipe Output Element (Bottom Right Accent) -->
+  <circle cx="192" cy="192" r="10" fill="#818cf8"/>
+</svg>
