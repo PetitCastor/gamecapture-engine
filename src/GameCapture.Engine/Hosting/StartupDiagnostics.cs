@@ -6,8 +6,8 @@ namespace GameCapture.Engine;
 /// <summary>Reports fatal startup failures when the normal tray process has no console.</summary>
 internal static class StartupDiagnostics
 {
-    private const string EventSource = "GameCapture.Engine";
     private const string EventLogName = "Application";
+    private const string StartupLogFileName = "startup.log";
 
     public static void Report(string? message, Exception? exception = null)
     {
@@ -20,21 +20,40 @@ internal static class StartupDiagnostics
             return;
         }
 
-        TryWriteEventLog(detail);
+        if (!TryWriteEventLog(detail))
+            TryWriteFileLog(detail);
         TryShowMessageBox(displayMessage);
     }
 
-    private static void TryWriteEventLog(string detail)
+    private static bool TryWriteEventLog(string detail)
     {
         try
         {
-            using var log = new EventLog(EventLogName) { Source = EventSource };
-            log.WriteEntry(detail, EventLogEntryType.Error);
+            EventLog.WriteEntry(EventLogName, detail, EventLogEntryType.Error);
+            return true;
         }
         catch
         {
-            // Event source registration can require elevation. The message box below remains the
-            // interactive fallback, and startup must never fail a second time while reporting.
+            return false;
+        }
+    }
+
+    private static void TryWriteFileLog(string detail)
+    {
+        try
+        {
+            var directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "GameCapture");
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(
+                Path.Combine(directory, StartupLogFileName),
+                $"[{DateTimeOffset.Now:O}] {detail}{Environment.NewLine}");
+        }
+        catch
+        {
+            // A non-interactive session may have no writable profile; reporting must never mask the
+            // original startup failure.
         }
     }
 
