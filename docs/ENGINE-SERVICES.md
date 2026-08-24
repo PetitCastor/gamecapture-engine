@@ -60,29 +60,29 @@ silently clamped to a meaningless sliver (`ScanLoop.EnsureRoiInFrame`,
 "engine default", `WireLimits.DefaultOcrScale = 1.0`
 (`src/GameCapture.Contracts/WireLimits.cs:11,27-28`). Before capturing, the engine clamps the requested
 scale so the upscaled crop never exceeds `OcrEngine.MaxImageDimension` (a Windows OCR limit) on
-its longest side (`OcrPipeline.EffectiveScale`, `src/GameCapture.Engine/Core/OcrPipeline.cs:120-126`).
+its longest side (`OcrPipeline.EffectiveScale`, `src/GameCapture.Engine/Processing/OcrPipeline.cs:120-126`).
 The scale actually applied is reported back on `RoiResult.effective_scale`, which is therefore
 always `> 0` on a successful result and `0` only on an error.
 
 ### Backpressure: DropOldest cap-4 (live), Wait (replay)
 
-Each connection has a bounded outbound channel of **4 ticks**
-(`ClientConnection.OutboundCapacity`, `src/GameCapture.Engine/ClientConnection.cs:14-18` — roughly 2 s
-at the default 500 ms cadence). The overflow policy is chosen per connection, live vs. replay
-(`ClientConnection.cs:41-49`):
+Each subscription has a bounded outbound channel of **4 ticks**
+(`ClientSubscription.OutboundCapacity`, `src/GameCapture.Engine/ClientSubscription.cs:14-18` — roughly 2 s
+at the default 500 ms cadence). The overflow policy is chosen per subscription, live vs. replay
+(`ClientSubscription.cs:41-49`):
 
 - **Live**: `BoundedChannelFullMode.DropOldest`. A plugin that falls behind loses old ticks rather
-  than stalling the scan loop or any other connected plugin; it sees a **gap in
+  than stalling the scan loop or any other connected plugin; it sees a **frame-sequence gap in
   `TickData.FrameSeq`**, never a stale backlog.
 - **Replay**: `BoundedChannelFullMode.Wait`. A dropped frame changes the outcome and determinism is
   the whole point of a corpus run, so the scan loop blocks instead of dropping.
 
-On the SDK side, `FrameSeqTracker` (`src/GameCapture.Sdk/Plugin/FrameSeqTracker.cs`) watches
+On the SDK side, `FrameSequenceTracker` (`src/GameCapture.Sdk/Plugin/FrameSequenceTracker.cs`) watches
 `FrameSeq` across ticks and `GameCapturePluginHost`'s dispatcher raises `SessionEvent.TicksDropped(Gap)`
-when it detects a jump (`src/GameCapture.Sdk/Plugin/SessionEvent.cs:28-39`) — a normal, if unwelcome,
-live-mode event rather than a transport failure. A sequence that goes backwards (an engine
-restart) is treated as a fresh start, not a negative gap, and does not raise the event
-(`FrameSeqTracker.TryObserve`, `src/GameCapture.Sdk/Plugin/FrameSeqTracker.cs:31-42`).
+when it detects a frame-sequence gap (`src/GameCapture.Sdk/Plugin/SessionEvent.cs:28-39`) — a normal,
+if unwelcome, live-mode event rather than a transport failure. A frame sequence that goes backwards
+(an engine restart) is treated as a fresh start, not a negative gap, and does not raise the event
+(`FrameSequenceTracker.TryObserve`, `src/GameCapture.Sdk/Plugin/FrameSequenceTracker.cs:31-42`).
 
 ### `manual` flag semantics
 
@@ -137,7 +137,7 @@ replay corpus without a raw frame ever crossing the boundary
   caller sent) and replaces every character `Path.GetInvalidFileNameChars()` rejects with `_`, so a
   plugin cannot steer a write outside the configured output directory; an empty result falls back
   to `"dump"` (`CaptureGrpcService.cs:22-23,301-312`).
-- **Output dir ownership**: always `EngineConfig.OutputDir` (`src/GameCapture.Engine/Core/EngineConfig.cs:19`)
+- **Output dir ownership**: always `EngineConfig.OutputDir` (`src/GameCapture.Engine/Configuration/EngineConfig.cs:19`)
   — the engine's own config, never anything the client supplies directly. Relative paths in
   `%LOCALAPPDATA%\GameCapture\engine-config.json` resolves relative paths against the config file's own directory (`EngineConfig.Load`,
   `EngineConfig.cs:51-69`).
@@ -174,7 +174,7 @@ rather than fail cleanly, so a plugin cannot tell "no engine yet" from "engine h
 ## Replay mode
 
 `--replay <dir>` feeds a directory of full-frame PNGs through the exact same `ScanLoop` production
-uses instead of live WGC capture (`ReplayFrameSource`, `src/GameCapture.Engine/Core/ReplayFrameSource.cs`;
+uses instead of live WGC capture (`ReplayFrameSource`, `src/GameCapture.Engine/Capture/ReplayFrameSource.cs`;
 wired in `Program.cs:41-52,71-76`). Full corpus layout, capture workflow, and the `ReplayHarness`
 SDK-testing helper are documented in [`docs/REPLAY.md`](REPLAY.md); this section covers the flags
 and the determinism guarantees specifically.
@@ -193,7 +193,7 @@ and the determinism guarantees specifically.
 **Determinism guarantees**:
 
 - Frames are enumerated once at construction, sorted by filename in **ordinal** order
-  (`ReplayFrameSource.EnumerateCorpus`, `src/GameCapture.Engine/Core/ReplayFrameSource.cs:50-51`) — not
+  (`ReplayFrameSource.EnumerateCorpus`, `src/GameCapture.Engine/Capture/ReplayFrameSource.cs:50-51`) — not
   culture-aware, so playback order cannot change with the machine's locale.
 - Each frame is decoded identically to how the engine's live path decodes a captured frame
   (`ReplayFrameSource.DecodeFrameAsync`) — a replay exercises the same reference-space-in,
@@ -213,7 +213,7 @@ and the determinism guarantees specifically.
 ## Video mode
 
 `--video <path>` feeds an MP4 through the same `ScanLoop` replay mode uses, via
-`VideoFrameSource` (`src/GameCapture.Engine/Core/VideoFrameSource.cs`; wired in
+`VideoFrameSource` (`src/GameCapture.Engine/Capture/VideoFrameSource.cs`; wired in
 `Program.cs:56-73,103,122-153`) instead of `ReplayFrameSource`. Full when-to-use-it guidance and
 the OCR-fidelity caveat live in [`docs/REPLAY.md`](REPLAY.md#video-sources); this section covers
 the flags and how it differs from a PNG corpus.
@@ -254,7 +254,7 @@ from a PNG corpus run either.
 `--save-frames` arms `FrameDumpService` on the manual hotkey path instead of the plain
 `ScanLoop.TriggerManual()`: each press downloads the current frame, saves it as a full PNG under
 `EngineConfig.OutputDir`, and logs the path (`Program.cs:139-147`,
-`src/GameCapture.Engine/Core/FrameDumpService.cs`). Cannot be combined with `--replay`
+`src/GameCapture.Engine/Operations/FrameDumpService.cs`). Cannot be combined with `--replay`
 (`Program.cs:48-52`). This is the mechanism behind the corpus-capture workflow in
 `docs/REPLAY.md` — press the hotkey at each stage worth a frame while playing live, then copy the
 resulting PNGs into `tests/fixtures/corpus/<name>/`.
@@ -263,7 +263,7 @@ resulting PNGs into `tests/fixtures/corpus/<name>/`.
 
 Hotkeys are **engine-owned**, never a plugin concern. `HotkeyListener` installs a low-level
 keyboard hook (`WH_KEYBOARD_LL`) on a dedicated message-pump thread
-(`src/GameCapture.Engine/Core/HotkeyListener.cs:6-11`) — `RegisterHotKey` is not used because a game
+(`src/GameCapture.Engine/Hosting/HotkeyListener.cs:6-11`) — `RegisterHotKey` is not used because a game
 reading input through raw input never lets `WM_HOTKEY` fire while it has
 focus; a low-level hook sees keys at the system input chain before the game does. The combo is
 configured as a string (`EngineConfig.Hotkey`, default `"Ctrl+Shift+F12"`) and parsed by
@@ -278,12 +278,12 @@ flag semantics above) — there is no separate hotkey RPC or event.
 | Budget | Value | Source |
 | --- | --- | --- |
 | `ROI_MODE_PIXELS` payload cap | 256 KiB (a 256x256 BGRA patch) | `WireLimits.MaxPixelBytes`, `src/GameCapture.Contracts/WireLimits.cs:20` (re-exported as `EngineDefaults.MaxPixelBytes`, `src/GameCapture.Sdk/EngineDefaults.cs:46`). Checked against **frame-space** bounds, i.e. after `RoiScaler.ToFrame` (`ScanLoop.cs:242`) — a probe sized to fit at 2560x1440 can still exceed the cap on a higher-resolution capture. |
-| OCR upscale clamp | Crop's longest side capped at `OcrEngine.MaxImageDimension` (Windows OCR API limit) | `OcrPipeline.EffectiveScale`, `src/GameCapture.Engine/Core/OcrPipeline.cs:120-126` |
+| OCR upscale clamp | Crop's longest side capped at `OcrEngine.MaxImageDimension` (Windows OCR API limit) | `OcrPipeline.EffectiveScale`, `src/GameCapture.Engine/Processing/OcrPipeline.cs:120-126` |
 | Minimum scan interval | 100 ms | `ScanLoop.MinScanInterval`, `src/GameCapture.Engine/ScanLoop.cs:22` |
-| Default scan interval | 500 ms (a stock, unconfigured engine) | `EngineConfig.ScanIntervalMs` default, `src/GameCapture.Engine/Core/EngineConfig.cs:32`; re-exported as `EngineDefaults.DefaultScanInterval`, `src/GameCapture.Sdk/EngineDefaults.cs:39` |
+| Default scan interval | 500 ms (a stock, unconfigured engine) | `EngineConfig.ScanIntervalMs` default, `src/GameCapture.Engine/Configuration/EngineConfig.cs:32`; re-exported as `EngineDefaults.DefaultScanInterval`, `src/GameCapture.Sdk/EngineDefaults.cs:39` |
 | Reference ROI space | 2560x1440 | `RoiScaler.ReferenceWidth/Height`, `src/GameCapture.Contracts/RoiScaler.cs:12-13` |
-| Pixel byte order | BGRA | `EngineDefaults.PixelChannelOrder`, `src/GameCapture.Sdk/EngineDefaults.cs:54`; produced by `PixelStrip.CaptureAsync`, `src/GameCapture.Engine/Core/PixelSampler.cs:41-58` |
-| Outbound tick channel depth | 4 ticks (~2 s at the default cadence) | `ClientConnection.OutboundCapacity`, `src/GameCapture.Engine/ClientConnection.cs:14-18` |
+| Pixel byte order | BGRA | `EngineDefaults.PixelChannelOrder`, `src/GameCapture.Sdk/EngineDefaults.cs:54`; produced by `PixelStrip.CaptureAsync`, `src/GameCapture.Engine/Processing/PixelSampler.cs:41-58` |
+| Outbound tick channel depth | 4 ticks (~2 s at the default cadence) | `ClientSubscription.OutboundCapacity`, `src/GameCapture.Engine/ClientSubscription.cs:14-18` |
 | gRPC receive limit (whole `TickResult`) | 4 MiB (gRPC default) | Why the per-ROI pixel cap exists at all — an unbounded `PIXELS` ROI could sink an entire tick; see `WireLimits.cs:14-19` |
 
 ## See also

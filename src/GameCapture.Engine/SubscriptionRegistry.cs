@@ -13,7 +13,7 @@ internal sealed class SubscriptionRegistry
     private static readonly TimeSpan SubscriberPollInterval = TimeSpan.FromMilliseconds(100);
 
     // The value is unused: ConcurrentDictionary is the only lock-free set in the BCL.
-    private readonly ConcurrentDictionary<ClientConnection, byte> _clients = new();
+    private readonly ConcurrentDictionary<ClientSubscription, byte> _clients = new();
     private readonly EngineStatus _status;
 
     // Once the loop is done there will never be another tick, so a client that registers during
@@ -23,9 +23,9 @@ internal sealed class SubscriptionRegistry
 
     public SubscriptionRegistry(EngineStatus status) => _status = status;
 
-    public ClientConnection Register(bool replayMode)
+    public ClientSubscription Register(bool replayMode)
     {
-        var client = new ClientConnection(replayMode, c => _status.AddClient(c.Id, c.Name));
+        var client = new ClientSubscription(replayMode, c => _status.AddClient(c.Id, c.Name));
         _clients[client] = 0;
         _status.AddClient(client.Id, client.Name);
 
@@ -35,7 +35,7 @@ internal sealed class SubscriptionRegistry
         return client;
     }
 
-    public void Unregister(ClientConnection c)
+    public void Unregister(ClientSubscription c)
     {
         _clients.TryRemove(c, out _);
         _status.RemoveClient(c.Id);
@@ -43,7 +43,7 @@ internal sealed class SubscriptionRegistry
     }
 
     /// <summary>Point-in-time copy; the scan loop iterates it without holding anything.</summary>
-    public IReadOnlyList<ClientConnection> Snapshot() => _clients.Keys.ToArray();
+    public IReadOnlyList<ClientSubscription> Snapshot() => _clients.Keys.ToArray();
 
     /// <summary>
     /// Replay gate: completes when at least one client has sent a RoiSetUpdate. Without it a

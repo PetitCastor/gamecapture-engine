@@ -33,7 +33,7 @@ public class ScanLoopTests
 
     /// <summary>Runs the loop to completion while draining the client, and returns every tick.</summary>
     private static async Task<List<TickResult>> RunAndCollectAsync(
-        Harness harness, ClientConnection client, CancellationToken ct)
+        Harness harness, ClientSubscription client, CancellationToken ct)
     {
         var run = harness.Loop.RunAsync(ct);
 
