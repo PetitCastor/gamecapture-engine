@@ -1,0 +1,16 @@
+{
+  "pipeName": "GameCapture.Engine",
+  "saveDebugFrames": false,
+  "outputs": [
+    {
+      "type": "json",
+      "path": "captures/records.jsonl"
+    },
+    {
+      "type": "overlay",
+      "overlay": {
+        "template": "{name}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "configVersion": 1,
+  "pipeName": "GameCapture.Engine",
+  "saveDebugFrames": false,
+  "outputs": [
+    {
+      "type": "json",
+      "addedIn": 1,
+      "path": "captures/records.jsonl",
+      "dedupeOnChange": true
+    }
+  ]
+}

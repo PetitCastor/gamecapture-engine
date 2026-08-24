@@ -565,7 +565,9 @@ disagree: check `config.json` against `%LOCALAPPDATA%\GameCapture\engine-config.
 ## 9. Config, CLI, and compatibility
 
 **Config.** `PluginConfig` carries the three settings every plugin has — `pipeName` (must match the
-engine's), `saveDebugFrames`, and `outputs` ([Outputs: sinks](#outputs-sinks)). Derive to add your
+engine's), `saveDebugFrames`, and `outputs` ([Outputs: sinks](#outputs-sinks)) — plus
+`configVersion`, which is bookkeeping for `ConfigSeed` rather than a setting anyone edits (see
+below). Derive to add your
 own; `PluginConfig.Load<T>(path)` writes a
 defaults file on first run so settings are discoverable without documentation, and `AfterLoad` is
 the hook for anything that must resolve relative to the config file's own location (a ledger path,
@@ -595,6 +597,58 @@ the only party that knows it and needs the typed instance back anyway.
 Everything about *how* the screen is read — monitor, hotkey, OCR language, scan cadence — belongs to
 the engine's config. A plugin that grew those knobs would be describing a capture stack it no longer
 owns.
+
+**Shipping defaults users have already run past.** A plugin that ships its `config.json` as an
+embedded resource and copies it out on first run has a hole: a default added *later* never reaches
+anyone who has run the plugin once. Nothing reports it either — `SinkFactory` routes a sink the user
+has no entry for to a no-op, so the feature is absent rather than broken. `ConfigSeed` closes it:
+
+```csharp
+// UserConfig.cs — replaces the hand-rolled "write it if the file is missing" block
+public static string Ensure() =>
+    ConfigSeed.EnsureInLocalAppData(typeof(UserConfig).Assembly, "MyPlugin.config.json", "MyPlugin");
+```
+
+Seeding still happens on first run. Beyond that, each entry in the embedded `outputs` array carries
+the version it was introduced in, and `ConfigSeed` offers only entries newer than the version
+stamped on the user's file. So shipping a new default is two edits: add the entry with an `addedIn`,
+and bump `configVersion` to match.
+
+```json
+{
+  "configVersion": 2,
+  "outputs": [
+    { "type": "json",    "addedIn": 1, "path": "captures/records.jsonl" },
+    { "type": "overlay", "addedIn": 2, "overlay": { "template": "{name}" } }
+  ]
+}
+```
+
+`addedIn` is bookkeeping about the shipped default, not a setting — it is stripped from what lands
+in the user's file.
+
+Tagging the entry rather than the file as a whole is what makes the guarantee hold for more than one
+release. Each default is offered exactly **once**; delete it afterwards and it stays deleted, however
+many versions ship later. Comparing the defaults against what the user currently has would instead
+read "deleted" and "never offered" as the same state, and resurrect a declined default on the next
+bump after the one that introduced it. Emptying `outputs` entirely is likewise a real choice, and
+survives.
+
+Three consequences worth knowing before relying on it:
+
+- **An untagged entry is never merged.** It ships to new users through first-run seeding, but no
+  existing file is offered it. Omit `configVersion` from the embedded default (version 0) and the
+  whole plugin opts out, keeping the old first-run-only behaviour.
+- **Outputs are also matched on `type`.** A genuinely new default is skipped if the user already has
+  a sink of that type — they may have added one themselves, and a second sink of the same type
+  quietly writes the same records to two places.
+- **Anything it cannot read, it declines to edit**: invalid JSON, duplicate keys, a root that is not
+  an object, an `outputs` that is not a list. The file is left exactly as it is for `Load<T>` to
+  report. A malformed *embedded* default is likewise not allowed to disturb an existing user's
+  working config.
+
+Writes go through a temporary file and a rename, so an interrupted run cannot leave a user holding a
+truncated config.
 
 **CLI.** The host parses `--pipe <name>` (overriding the config) and `--verbose` for every plugin.
 For flags of your own, use `PluginHostOptions.ExtraArgHandler`: it is handed the whole argument list
