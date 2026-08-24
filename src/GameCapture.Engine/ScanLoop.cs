@@ -1,4 +1,3 @@
-using System.Threading.Channels;
 using GameCapture.Contracts;
 using GameCapture.Contracts.Proto;
 using Google.Protobuf;
@@ -27,15 +26,14 @@ internal sealed class ScanLoop : IDisposable
     private readonly EngineStatus _status;
     private readonly ConsoleSink _sink;
     private readonly TimeSpan _scanInterval;
+    private readonly SubscriptionTickProcessor _tickProcessor;
+    private readonly RetainedFrameStore _retainedFrameStore;
     private readonly bool _verbose;
 
     private ulong _seq;
     private int _manualFlag;
     private int _lastFrameWidth, _lastFrameHeight;
     private Func<SoftwareBitmap, Task>? _manualFrameHandler;
-
-    // The frame ReadRoi/DumpFrame answer from. Only ever touched under FrameGate.
-    private SoftwareBitmap? _lastScanned;
 
     public ScanLoop(
         IFrameSource source,
@@ -55,6 +53,8 @@ internal sealed class ScanLoop : IDisposable
 
         var configured = TimeSpan.FromMilliseconds(config.ScanIntervalMs);
         _scanInterval = configured < MinScanInterval ? MinScanInterval : configured;
+        _tickProcessor = new SubscriptionTickProcessor(source.Mode, ReadOneAsync);
+        _retainedFrameStore = new RetainedFrameStore(sink.WriteLine);
     }
 
     /// <summary>
@@ -70,13 +70,13 @@ internal sealed class ScanLoop : IDisposable
     /// the unary RPCs for the duration of their read, so a ReadRoi can never race a swap and OCR
     /// a disposed bitmap.
     /// </summary>
-    public SemaphoreSlim FrameGate { get; } = new(1, 1);
+    public SemaphoreSlim FrameGate => _retainedFrameStore.Gate;
 
     /// <summary>
     /// Most recently scanned frame, or null before the first one. Callers MUST hold
     /// <see cref="FrameGate"/> across both the read and their use of the bitmap.
     /// </summary>
-    internal SoftwareBitmap? RetainedFrame => _lastScanned;
+    internal SoftwareBitmap? RetainedFrame => _retainedFrameStore.Frame;
 
     /// <summary>
     /// Marks the next tick as manually triggered. Called from the hotkey listener's hook thread,
@@ -141,38 +141,8 @@ internal sealed class ScanLoop : IDisposable
                 var retained = false;
                 try
                 {
-                    foreach (var client in clients)
-                    {
-                        var tick = new TickResult
-                        {
-                            TimestampMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                            FrameSeq = _seq,
-                            FrameWidth = (uint)bitmap.PixelWidth,
-                            FrameHeight = (uint)bitmap.PixelHeight,
-                            Manual = manual,
-                        };
-
-                        foreach (var spec in client.Rois)
-                            tick.Results.Add(await ReadOneAsync(bitmap, spec));
-
-                        var response = new TrackResponse { Tick = tick };
-                        if (_source.Mode.UsesReplayFlow())
-                        {
-                            // Backpressure: determinism first. Unlike the live TryWrite, this
-                            // write can fail — a plugin that disposes its session (or dies) has
-                            // its channel completed by the registry, and the throw would escape
-                            // RunAsync's cancellation-only filter and end the run for EVERY
-                            // client, mid-corpus. The departed client is simply skipped.
-                            try { await client.Out.Writer.WriteAsync(response, ct); }
-                            catch (ChannelClosedException) { }
-                        }
-                        else
-                        {
-                            client.Out.Writer.TryWrite(response); // DropOldest handles overflow
-                        }
-                    }
-
-                    await SwapRetainedAsync(bitmap, manualFrameHandler);
+                    await _tickProcessor.ProcessAsync(clients, bitmap, _seq, manual, ct);
+                    await _retainedFrameStore.SwapAsync(bitmap, manualFrameHandler);
                     retained = true;
                 }
                 finally
@@ -196,6 +166,7 @@ internal sealed class ScanLoop : IDisposable
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Ctrl+C / host shutdown. A normal exit, not a fault.
+            return;
         }
         finally
         {
@@ -277,20 +248,7 @@ internal sealed class ScanLoop : IDisposable
     }
 
     public void Dispose()
-    {
-        FrameGate.Wait();
-        try
-        {
-            _lastScanned?.Dispose();
-            _lastScanned = null;
-        }
-        finally
-        {
-            FrameGate.Release();
-        }
-
-        FrameGate.Dispose();
-    }
+        => _retainedFrameStore.Dispose();
 
     /// <summary>
     /// Rejects a reference-space ROI that cannot touch the frame at all, instead of letting
@@ -321,37 +279,6 @@ internal sealed class ScanLoop : IDisposable
         var y = rect.Y * (double)frameHeight / RoiScaler.ReferenceHeight;
 
         return rect.Width == 0 || rect.Height == 0 || x >= frameWidth || y >= frameHeight;
-    }
-
-    /// <summary>Replaces the retained frame under the gate, disposing the one it supersedes.</summary>
-    /// <remarks>
-    /// Deliberately not cancellable: the gate is only ever held for the length of one unary RPC,
-    /// and bailing out here would leave the frame owned by nobody.
-    /// </remarks>
-    private async Task SwapRetainedAsync(SoftwareBitmap bitmap, Func<SoftwareBitmap, Task>? manualFrameHandler)
-    {
-        await FrameGate.WaitAsync();
-        try
-        {
-            _lastScanned?.Dispose();
-            _lastScanned = bitmap;
-
-            if (manualFrameHandler is not null)
-            {
-                try
-                {
-                    await manualFrameHandler(bitmap);
-                }
-                catch (Exception ex)
-                {
-                    _sink.WriteLine($"[frames] failed to save frame: {ex.Message}");
-                }
-            }
-        }
-        finally
-        {
-            FrameGate.Release();
-        }
     }
 
     /// <summary>Logs the capture size on the first frame and again if it changes (window resize).</summary>

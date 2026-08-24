@@ -14,15 +14,15 @@ for the life of its session (`protos/capture.proto:14`, `CaptureGrpcService.Trac
 
 ### Tick model
 
-Every scanned frame produces exactly one `TickResult` per connected client
-(`ScanLoop.RunAsync`, `src/GameCapture.Engine/ScanLoop.cs:134-163`). All OCR for the whole engine
-happens inside that one loop, one frame at a time, so a tick can never straddle two frames or mix
-in a different client's ROI set — per-tick atomicity is structural, not a convention enforced by
-discipline.
+Every scanned frame produces exactly one `TickResult` per connected client. `ScanLoop.RunAsync`
+keeps the one-frame-at-a-time sequence, while `SubscriptionTickProcessor.ProcessAsync` constructs
+and delivers each client's complete tick. All OCR for the whole engine remains inside that serial
+flow, so a tick can never straddle two frames or mix in a different client's ROI set — per-tick
+atomicity is structural, not a convention enforced by discipline.
 
 **Every ROI in the client's set at tick time is answered in that tick** — either a successful
 result or a per-ROI `error` (`ScanLoop.ReadOneAsync` never throws out of the tick;
-`src/GameCapture.Engine/ScanLoop.cs:198-267`). A failing ROI never removes another ROI's result, for
+`src/GameCapture.Engine/ScanLoop.cs`). A failing ROI never removes another ROI's result, for
 that client or any other client sharing the engine.
 
 The only thing a plugin *sends* on this stream past the initial `Hello` is a `RoiSetUpdate` — a
@@ -46,13 +46,13 @@ Declared per-region on subscribe (`RoiSpec.mode`, `protos/capture.proto:66`, val
 A client declares every ROI in **reference space** (2560x1440, `RoiScaler.ReferenceWidth/Height`,
 `src/GameCapture.Contracts/RoiScaler.cs:12-13`). **The engine does all scaling** — `RoiScaler.ToFrame`
 maps a reference rect to the actual frame pixels for whatever resolution is being captured
-(`ScanLoop.ReadOneAsync`, `src/GameCapture.Engine/ScanLoop.cs:214`), and the frame-space rect actually
+(`ScanLoop.ReadOneAsync`, `src/GameCapture.Engine/ScanLoop.cs`), and the frame-space rect actually
 read is echoed back on `RoiResult.frame_rect`. A plugin must never re-scale a rect the engine
 reported — see the coordinate-spaces table in `docs/PROTOCOL.md` for the full three-space picture
 (reference / frame / upscaled-OCR-crop). A reference ROI that cannot touch the frame at all —
 `x`/`y` beyond the frame edge, or a zero width/height — is rejected as a per-ROI error rather than
 silently clamped to a meaningless sliver (`ScanLoop.EnsureRoiInFrame`,
-`src/GameCapture.Engine/ScanLoop.cs:292-314`).
+`src/GameCapture.Engine/ScanLoop.cs`).
 
 ### Scale clamp behavior (`Text`/`Detailed` only)
 
@@ -89,7 +89,7 @@ if unwelcome, live-mode event rather than a transport failure. A frame sequence 
 `TickResult.manual` is **the same value for every connected client on a given tick** — the hotkey
 either fired on this frame or it did not, and no two plugins may disagree about which. The scan
 loop reads the flag exactly once per frame via `Interlocked.Exchange(ref _manualFlag, 0)`
-(`src/GameCapture.Engine/ScanLoop.cs:85,120`), so a press on the hook thread is picked up atomically by
+(`ScanLoop.TriggerManual` / `ScanLoop.RunAsync`), so a press on the hook thread is picked up atomically by
 the next tick and cleared for the one after. `TickData.Manual` on the SDK side is a straight copy
 of that bit (`src/GameCapture.Sdk/TickData.cs:67`); the plugin host dispatches a manual tick to
 `IGameCapturePlugin.OnManualTickAsync` instead of `OnTickAsync` (`TickDispatcher.DispatchAsync`,
@@ -114,9 +114,10 @@ aid, not a data path (`protos/capture.proto:16-17`, `CaptureGrpcService.ReadRoi`
 `src/GameCapture.Engine/Grpc/CaptureGrpcService.cs:176-197`).
 
 - **One-shot vs. retained frame**: it deliberately does **not** capture a fresh frame. It reads
-  whatever `ScanLoop` last scanned, under `ScanLoop.FrameGate` so it can never race a frame swap
-  and OCR a disposed bitmap. If the engine has not scanned anything yet, `ReadRoiResponse.no_frame`
-  is `true` and there is no result.
+  whatever `ScanLoop` last scanned, under the serialized gate owned by `RetainedFrameStore` and
+  exposed through `ScanLoop.FrameGate`, so it can never race a frame swap and OCR a disposed
+  bitmap. If the engine has not scanned anything yet, `ReadRoiResponse.no_frame` is `true` and
+  there is no result.
 - Runs the exact same `ScanLoop.ReadOneAsync` path a live tick uses, so a calibration read behaves
   identically to what a subscribed ROI would have gotten on that frame.
 - **Calibration workflow**: point a throwaway `RoiSpec` at a candidate rectangle, call `ReadRoi`
@@ -205,10 +206,10 @@ and the determinism guarantees specifically.
 - Replay's outbound channel is `Wait`, not `DropOldest` (see Track above): every frame in the
   corpus produces exactly one tick, regardless of how slowly the plugin consumes them.
 - Replay runs flat out, with no inter-tick delay — the corpus is finite and the scan cadence is a
-  live-capture concern, not a semantic one (`ScanLoop.cs:180-183`).
+  live-capture concern, not a semantic one (`ScanLoop.RunAsync`).
 - When the corpus is exhausted, `SubscriptionRegistry.CompleteAll()` completes every client's
   `Track` stream normally — `Ticks` ends and a plugin runs its finalisers, exactly as a live
-  engine shutdown does (`ScanLoop.cs:190-195`, `SubscriptionRegistry.cs:59-68`).
+  engine shutdown does (`ScanLoop.RunAsync`, `SubscriptionRegistry.cs:59-68`).
 
 ## Video mode
 
@@ -274,9 +275,9 @@ flag semantics above) — there is no separate hotkey RPC or event.
 
 | Budget | Value | Source |
 | --- | --- | --- |
-| `ROI_MODE_PIXELS` payload cap | 256 KiB (a 256x256 BGRA patch) | `WireLimits.MaxPixelBytes`, `src/GameCapture.Contracts/WireLimits.cs:20` (re-exported as `EngineDefaults.MaxPixelBytes`, `src/GameCapture.Sdk/EngineDefaults.cs:46`). Checked against **frame-space** bounds, i.e. after `RoiScaler.ToFrame` (`ScanLoop.cs:242`) — a probe sized to fit at 2560x1440 can still exceed the cap on a higher-resolution capture. |
+| `ROI_MODE_PIXELS` payload cap | 256 KiB (a 256x256 BGRA patch) | `WireLimits.MaxPixelBytes`, `src/GameCapture.Contracts/WireLimits.cs:20` (re-exported as `EngineDefaults.MaxPixelBytes`, `src/GameCapture.Sdk/EngineDefaults.cs:46`). Checked against **frame-space** bounds, i.e. after `RoiScaler.ToFrame` (`ScanLoop.ReadOneAsync`) — a probe sized to fit at 2560x1440 can still exceed the cap on a higher-resolution capture. |
 | OCR upscale clamp | Crop's longest side capped at `OcrEngine.MaxImageDimension` (Windows OCR API limit) | `OcrPipeline.EffectiveScale`, `src/GameCapture.Engine/Processing/OcrPipeline.cs:120-126` |
-| Minimum scan interval | 100 ms | `ScanLoop.MinScanInterval`, `src/GameCapture.Engine/ScanLoop.cs:22` |
+| Minimum scan interval | 100 ms | `ScanLoop.MinScanInterval`, `src/GameCapture.Engine/ScanLoop.cs` |
 | Default scan interval | 500 ms (a stock, unconfigured engine) | `EngineConfig.ScanIntervalMs` default, `src/GameCapture.Engine/Configuration/EngineConfig.cs:32`; re-exported as `EngineDefaults.DefaultScanInterval`, `src/GameCapture.Sdk/EngineDefaults.cs:39` |
 | Reference ROI space | 2560x1440 | `RoiScaler.ReferenceWidth/Height`, `src/GameCapture.Contracts/RoiScaler.cs:12-13` |
 | Pixel byte order | BGRA | `EngineDefaults.PixelChannelOrder`, `src/GameCapture.Sdk/EngineDefaults.cs:54`; produced by `PixelStrip.CaptureAsync`, `src/GameCapture.Engine/Processing/PixelSampler.cs:41-58` |
