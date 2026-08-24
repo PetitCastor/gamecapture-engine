@@ -1,5 +1,7 @@
 using GameCapture.Engine;
 
+ConsoleWindowVisibility.EnsureDebugConsole();
+
 // First statement so every later write goes through it and disposal (status-bar erase,
 // cursor restore) is guaranteed on every return path.
 using var sink = new ConsoleSink();
@@ -26,13 +28,13 @@ string? ArgValue(string name) => args
 var pipeName = ArgValue("--pipe") ?? config.PipeName;
 if (string.IsNullOrWhiteSpace(pipeName))
 {
-    Console.Error.WriteLine("Pipe name must not be blank (set \"pipeName\" in engine-config.json or pass --pipe).");
+    StartupDiagnostics.Report("Pipe name must not be blank (set \"pipeName\" in engine-config.json or pass --pipe).");
     return 1;
 }
 
 if (!FrameSourceFactory.TryValidate(args, config, saveFrames, out var sourceFactory, out var sourceError))
 {
-    Console.Error.WriteLine(sourceError);
+    StartupDiagnostics.Report(sourceError);
     return 1;
 }
 
@@ -44,14 +46,14 @@ try
 }
 catch (InvalidOperationException ex)
 {
-    Console.Error.WriteLine(ex.Message);
+    StartupDiagnostics.Report(ex.Message, ex);
     return 1;
 }
 
 var sourceCreation = await sourceFactory.CreateAsync(sink);
 if (!sourceCreation.Succeeded)
 {
-    Console.Error.WriteLine(sourceCreation.Error);
+    StartupDiagnostics.Report(sourceCreation.Error);
     return 1;
 }
 
@@ -69,7 +71,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"Failed to start on pipe '{pipeName}': {ex.Message}");
+    StartupDiagnostics.Report($"Failed to start on pipe '{pipeName}': {ex.Message}", ex);
     return 1;
 }
 

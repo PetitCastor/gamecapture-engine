@@ -25,7 +25,7 @@ namespace GameCapture.Engine;
 public sealed class ConsoleSink : IDisposable
 {
     private readonly Lock _gate = new();
-    private readonly bool _interactive = !Console.IsOutputRedirected;
+    private readonly bool _interactive = ConsoleWindowVisibility.HasConsole && !Console.IsOutputRedirected;
     private string _statusText = "";
     private bool _statusDrawn;
     private bool _disposed;

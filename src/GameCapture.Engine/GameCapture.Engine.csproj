@@ -3,13 +3,13 @@
   <!-- Windows TFM copied from the monolith: WGC capture, Windows OCR and the low-level
        keyboard hook all stay on this side of the boundary. Plugins are plain net10.0. -->
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <PlatformTarget>x64</PlatformTarget>
     <RootNamespace>GameCapture.Engine</RootNamespace>
-    <!-- Tray icon (GameCapture.Engine.Tray) hosts a WinForms NotifyIcon in-process. OutputType stays
-         Exe, not WinExe: the engine keeps its console banner and the tray runs on its own STA thread. -->
+    <!-- Tray icon (GameCapture.Engine.Tray) hosts a WinForms NotifyIcon in-process. Normal launches
+         are tray-only; Program allocates a console when a debugger is attached. -->
     <UseWindowsForms>true</UseWindowsForms>
     <!-- Explorer/taskbar icon for GameCapture.Engine.exe itself, distinct from the runtime tray icon
          drawn by TrayIconFactory. Regenerate via scripts/generate_app_icon.py. -->
