@@ -8,9 +8,9 @@ internal sealed class BenchmarkFrameSource : IFrameSource
     private readonly Channel<SoftwareBitmap> _frames = Channel.CreateUnbounded<SoftwareBitmap>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
 
-    public bool IsReplay => true;
+    public FrameSourceMode Mode => FrameSourceMode.ReplayCorpus;
 
-    public Task<SoftwareBitmap?> NextFrameAsync(CancellationToken ct)
+    public ValueTask<FrameReadResult> ReadFrameAsync(CancellationToken ct)
         => ReadNextAsync(ct);
 
     public void Publish(SoftwareBitmap frame)
@@ -29,6 +29,6 @@ internal sealed class BenchmarkFrameSource : IFrameSource
             frame.Dispose();
     }
 
-    private async Task<SoftwareBitmap?> ReadNextAsync(CancellationToken ct)
-        => await _frames.Reader.ReadAsync(ct);
+    private async ValueTask<FrameReadResult> ReadNextAsync(CancellationToken ct)
+        => FrameReadResult.Frame(await _frames.Reader.ReadAsync(ct));
 }

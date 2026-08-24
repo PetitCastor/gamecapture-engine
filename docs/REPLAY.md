@@ -73,12 +73,12 @@ Same source class, two modes, chosen by `--video-realtime`:
   `1000 / scanIntervalMs` so sampling matches the live scan cadence) and returns each as fast as it
   decodes, ending at EOF. Same shape as a PNG corpus: reproducible run to run, and the mode
   `VideoFrameSourceTests` exercises.
-- **Interactive (`--video-realtime`)** — `NextFrameAsync` waits for each frame's presentation time
-  against a wall clock, so the engine sees the session unfold at recorded speed: the manual hotkey
-  and the metrics status bar are both live, same as against the real game. `--video-loop` restarts
-  at EOF instead of ending the run.
+- **Interactive (`--video-realtime`)** — `ReadFrameAsync` waits for each frame's presentation time
+  against a monotonic `TimeProvider`, so the engine sees the session unfold at recorded speed: the
+  manual hotkey and the metrics status bar are both live, same as against the real game.
+  `--video-loop` restarts at EOF instead of ending the run.
 
-`IFrameSource.IsReplay` is `true` in both modes — see `VideoFrameSource`'s own doc comment for why
+`IFrameSource.Mode` uses replay flow in both cases (`DeterministicVideo` or `RealtimeVideo`) —
 realtime still counts as replay — so the `Wait`-mode backpressure and manual-subscription gating
 below apply to `--video` exactly as they do to a PNG corpus.
 

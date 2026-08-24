@@ -11,19 +11,23 @@ namespace GameCapture.Engine.Tests;
 public class ReplayFrameSourceTests
 {
     [Fact]
-    public async Task NextFrameAsync_ReturnsFramesInOrdinalOrderThenNull()
+    public async Task ReadFrameAsync_ReturnsFramesInOrdinalOrderThenEndOfStream()
     {
         using var source = new ReplayFrameSource(EngineTestFixtures.ReplayDir);
 
         var seen = new List<string>();
-        while (await source.NextFrameAsync(CancellationToken.None) is { } bitmap)
+        while (true)
         {
-            using (bitmap)
-            {
-                // Bgra8 is what every downstream consumer assumes: the OCR crop path, the pixel
-                // strip's 4-bytes-per-pixel arithmetic, and PNG dumps alike.
-                Assert.Equal(BitmapPixelFormat.Bgra8, bitmap.BitmapPixelFormat);
-            }
+            var read = await source.ReadFrameAsync(CancellationToken.None);
+            if (read.Status == FrameReadStatus.EndOfStream)
+                break;
+
+            Assert.Equal(FrameReadStatus.FrameReady, read.Status);
+            using var bitmap = read.Bitmap;
+            Assert.NotNull(bitmap);
+            // Bgra8 is what every downstream consumer assumes: the OCR crop path, the pixel
+            // strip's 4-bytes-per-pixel arithmetic, and PNG dumps alike.
+            Assert.Equal(BitmapPixelFormat.Bgra8, bitmap!.BitmapPixelFormat);
 
             seen.Add(source.LastFrameName!);
         }
@@ -34,7 +38,9 @@ public class ReplayFrameSourceTests
         Assert.Equal(EngineTestFixtures.ExpectedFrameNames(), seen);
         Assert.Equal(seen.Count, source.FrameCount);
 
-        // Exhausted stays exhausted — the scan loop reads null as "corpus finished" and breaks.
-        Assert.Null(await source.NextFrameAsync(CancellationToken.None));
+        // Exhausted stays exhausted — the scan loop reads end-of-stream as "corpus finished" and breaks.
+        var afterEnd = await source.ReadFrameAsync(CancellationToken.None);
+        Assert.Equal(FrameReadStatus.EndOfStream, afterEnd.Status);
+        Assert.Null(afterEnd.Bitmap);
     }
 }

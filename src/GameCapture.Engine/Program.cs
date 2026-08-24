@@ -48,15 +48,16 @@ catch (InvalidOperationException ex)
     return 1;
 }
 
-var sourceSelection = sourceFactory.Create(sink, out sourceError);
-if (sourceSelection is null)
+var sourceCreation = await sourceFactory.CreateAsync(sink);
+if (!sourceCreation.Succeeded)
 {
-    Console.Error.WriteLine(sourceError);
+    Console.Error.WriteLine(sourceCreation.Error);
     return 1;
 }
 
+var sourceSelection = sourceCreation.Selection!;
 var source = sourceSelection.Source;
-var livePaced = sourceSelection.IsLivePaced;
+var livePaced = source.Mode.IsInteractive();
 
 await using var engine = EngineHost.Create(pipeName, config, ocr, source, sink, verbose);
 

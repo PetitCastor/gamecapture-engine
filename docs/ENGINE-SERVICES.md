@@ -160,7 +160,7 @@ Unary, stateless snapshot of what the engine is doing right now
 | `engine_version` | The engine's own build version (assembly informational version, falling back to the assembly version, then `"0.0.0"`). |
 | `frame_width` / `frame_height` | Last scanned frame's pixel size; both `0` until the first frame — not a 0x0 screen. |
 | `frame_seq` | The last scanned frame's sequence number. |
-| `replay_mode` | `true` when frames come from `IFrameSource.IsReplay` rather than live WGC capture — a PNG corpus (`--replay`) and a video (`--video`, both modes) both report `true`; this field does not distinguish which (`EngineHost.cs:40`, `VideoFrameSource.cs:58`). |
+| `replay_mode` | `true` when frames use replay flow rather than live WGC capture — a PNG corpus (`--replay`) and a video (`--video`, both modes) both report `true`; this field still does not distinguish which (`EngineHost`, `VideoFrameSource`). |
 | `ocr_language` | BCP-47 tag of the recognizer actually loaded (`OcrPipeline.LanguageTag`). |
 | `connected_clients` | Names of every connection currently open on the engine, ordinal-sorted — not only ones that have subscribed. A client is listed the moment its `Track` call registers, as `"?"` until its `Hello` names it (`SubscriptionRegistry.Register`, `src/GameCapture.Engine/SubscriptionRegistry.cs:26-36`); a bare `GetStatus`/`WaitForEngineAsync` call opens no `Track` stream and does not appear. |
 | `min_supported_protocol` / `max_supported_protocol` | The `[Min, Current]` protocol-version range this engine build accepts — `GameCapture.Contracts.ProtocolVersion`; see the version-policy section of `docs/PROTOCOL.md`. |
@@ -233,21 +233,18 @@ the flags and how it differs from a PNG corpus.
   (`Program.cs:78-82`).
 
 **Deterministic vs. realtime**: both modes are the same `VideoFrameSource`, differing only in
-whether `NextFrameAsync` paces itself against a wall clock (`VideoFrameSource.cs:60-95`). This
-governs the hotkey and metrics gating below: `Program.cs`'s `livePaced` predicate
-(`Program.cs:103`) is `true` for live capture and `--video-realtime`, `false` for `--replay` and
-plain `--video` — replacing the old `replayDir is null` check that gated the hotkey listener and
-metrics reporter (`Program.cs:219,242-244,251-252`).
+whether `ReadFrameAsync` paces itself against a monotonic `TimeProvider` (`VideoFrameSource.cs`).
+`Mode.IsInteractive()` is `true` for live capture and `--video-realtime`, `false` for `--replay`
+and plain `--video`. `Program` uses it for the startup banner, while `EngineDesktopLifetime` uses
+it to gate hotkey, metrics, and tray services.
 
-**`IsReplay` is `true` in both modes**, including realtime — `VideoFrameSource.cs:58`, doc comment
-at `VideoFrameSource.cs:16-19`. A video is a finite source whose `null` return means end of stream,
-never "screen went idle," which is exactly what a PNG corpus means by `IsReplay` too. Consequence:
+**Video has an explicit pacing mode**: `DeterministicVideo` or `RealtimeVideo`. Both use replay
+flow: `ReadFrameAsync` reports `EndOfStream`, never live-capture `Idle`, which is why
 `--video-realtime` still gets the `Wait`-mode backpressure and the wait-for-subscriber gating this
-document's Track section describes for replay, not the live `DropOldest` policy — the wall-clock
-pacing lives inside `NextFrameAsync` itself (`VideoFrameSource.cs:88-95`), not in `ScanLoop`'s
-inter-tick delay, so `ScanLoop` treats a realtime video exactly like a batch replay run with a slow
-frame source. See the `replay_mode` row in the `GetStatus` table above: it cannot tell a video run
-from a PNG corpus run either.
+document's Track section describes for replay, not the live `DropOldest` policy. The pacing lives
+inside `ReadFrameAsync`, not in `ScanLoop`'s inter-tick delay, so `ScanLoop` treats a realtime
+video exactly like a batch replay run with a slow frame source. See the `replay_mode` row in the
+`GetStatus` table above: it still cannot tell a video run from a PNG corpus run either.
 
 ## `--save-frames`: corpus capture
 

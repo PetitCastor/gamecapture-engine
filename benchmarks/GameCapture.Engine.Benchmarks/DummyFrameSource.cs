@@ -1,13 +1,11 @@
-using Windows.Graphics.Imaging;
-
 namespace GameCapture.Engine.Benchmarks;
 
 internal sealed class DummyFrameSource : IFrameSource
 {
-    public Task<SoftwareBitmap?> NextFrameAsync(CancellationToken ct)
-        => Task.FromResult<SoftwareBitmap?>(null);
+    public ValueTask<FrameReadResult> ReadFrameAsync(CancellationToken ct)
+        => ValueTask.FromResult(FrameReadResult.Idle);
 
-    public bool IsReplay => false;
+    public FrameSourceMode Mode => FrameSourceMode.LiveCapture;
 
     public void Dispose()
     {

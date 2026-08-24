@@ -7,6 +7,5 @@ namespace GameCapture.Engine;
 internal sealed record FrameSourceSelection(
     IFrameSource Source,
     string Description,
-    bool IsLivePaced,
     IReadOnlyList<string> MonitorLabels,
     int CurrentMonitorIndex);

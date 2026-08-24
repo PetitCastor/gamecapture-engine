@@ -37,8 +37,8 @@ public class ReplayHarnessVideoTests(ITestOutputHelper output)
 
         Assert.Equal(0, result.ExitCode);
 
-        // A video drains through the same null-frame EOF path as a PNG corpus (IsReplay == true in
-        // both), so the host reports the same end reason — this is the end-to-end proof of that.
+        // A video drains through the same finite-source EOF path as a PNG corpus, so the host
+        // reports the same end reason — this is the end-to-end proof of that.
         Assert.Equal(StreamEndReason.ReplayCompleted, result.Reason);
 
         // The synthetic clip is non-trivial, so a real decode produces ticks; zero would mean the

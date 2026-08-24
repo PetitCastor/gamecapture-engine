@@ -62,7 +62,7 @@ public sealed class FrameSourceFactoryTests
     }
 
     [Fact]
-    public void Create_SelectsReplayAndReturnsItsOperatorDescription()
+    public async Task CreateAsync_SelectsReplayAndReturnsItsOperatorDescription()
     {
         Assert.True(FrameSourceFactory.TryValidate(
             ["--replay", EngineTestFixtures.ReplayDir],
@@ -72,24 +72,25 @@ public sealed class FrameSourceFactoryTests
             out var validationError), validationError);
 
         using var sink = new ConsoleSink();
-        var selection = factory.Create(sink, out var creationError);
+        var creation = await factory.CreateAsync(sink);
+        Assert.True(creation.Succeeded);
+        var selection = creation.Selection;
 
         Assert.NotNull(selection);
         using (selection.Source)
         {
             Assert.IsType<ReplayFrameSource>(selection.Source);
-            Assert.False(selection.IsLivePaced);
+            Assert.Equal(FrameSourceMode.ReplayCorpus, selection.Source.Mode);
             Assert.Empty(selection.MonitorLabels);
             Assert.Equal(0, selection.CurrentMonitorIndex);
             Assert.Equal(
                 $"Replay:    {EngineTestFixtures.ExpectedFrameNames().Length} frame(s) from {EngineTestFixtures.ReplayDir}",
                 selection.Description);
         }
-        Assert.Null(creationError);
     }
 
     [Fact]
-    public void Create_SelectsRealtimeVideoAndReturnsItsOperatorDescription()
+    public async Task CreateAsync_SelectsRealtimeVideoAndReturnsItsOperatorDescription()
     {
         Assert.True(FrameSourceFactory.TryValidate(
             ["--video", EngineTestFixtures.VideoPath, "--video-fps", "2.5", "--video-realtime", "--video-loop"],
@@ -99,20 +100,40 @@ public sealed class FrameSourceFactoryTests
             out var validationError), validationError);
 
         using var sink = new ConsoleSink();
-        var selection = factory.Create(sink, out var creationError);
+        var creation = await factory.CreateAsync(sink);
+        Assert.True(creation.Succeeded);
+        var selection = creation.Selection;
 
         Assert.NotNull(selection);
         using (selection.Source)
         {
             var formattedFps = 2.5.ToString("0.###", CultureInfo.CurrentCulture);
             Assert.IsType<VideoFrameSource>(selection.Source);
-            Assert.True(selection.IsLivePaced);
+            Assert.Equal(FrameSourceMode.RealtimeVideo, selection.Source.Mode);
             Assert.Empty(selection.MonitorLabels);
             Assert.Equal(0, selection.CurrentMonitorIndex);
             Assert.Equal(
                 $"Video:     {EngineTestFixtures.VideoPath} 320x180, 00:03.000, {formattedFps} fps [realtime, loop]",
                 selection.Description);
         }
-        Assert.Null(creationError);
+    }
+
+    [Fact]
+    public async Task CreateAsync_WhenVideoFpsExceedsNativeRate_ReturnsOnlyAnError()
+    {
+        Assert.True(FrameSourceFactory.TryValidate(
+            ["--video", EngineTestFixtures.VideoPath, "--video-fps", "1000"],
+            new EngineConfig(),
+            saveFrames: false,
+            out var factory,
+            out var validationError), validationError);
+
+        using var sink = new ConsoleSink();
+        var creation = await factory.CreateAsync(sink);
+
+        Assert.False(creation.Succeeded);
+        Assert.Null(creation.Selection);
+        Assert.NotNull(creation.Error);
+        Assert.Contains("exceeds the video's native frame rate", creation.Error, StringComparison.Ordinal);
     }
 }

@@ -48,7 +48,7 @@ internal sealed class EngineHost : IAsyncDisposable
         string pipeName, EngineConfig config, OcrPipeline ocr, IFrameSource source,
         ConsoleSink sink, bool verbose)
     {
-        var status = new EngineStatus(ocr.LanguageTag, source.IsReplay);
+        var status = new EngineStatus(ocr.LanguageTag, source.Mode.UsesReplayFlow());
         var registry = new SubscriptionRegistry(status);
         var scanLoop = new ScanLoop(source, ocr, registry, status, sink, config, verbose);
         var app = GrpcHost.BuildGrpcHost(pipeName, status, registry, scanLoop, ocr, config);

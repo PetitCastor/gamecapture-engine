@@ -187,10 +187,10 @@ public class ProtocolHandshakeTests
 
     private sealed class NoFramesSource : IFrameSource
     {
-        public bool IsReplay => false;
+        public FrameSourceMode Mode => FrameSourceMode.LiveCapture;
 
-        public Task<Windows.Graphics.Imaging.SoftwareBitmap?> NextFrameAsync(CancellationToken ct)
-            => Task.FromResult<Windows.Graphics.Imaging.SoftwareBitmap?>(null);
+        public ValueTask<FrameReadResult> ReadFrameAsync(CancellationToken ct)
+            => ValueTask.FromResult(FrameReadResult.Idle);
 
         public void Dispose() { }
     }

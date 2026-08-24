@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Graphics.Imaging;
 
 namespace GameCapture.Engine;
@@ -15,25 +16,25 @@ internal sealed class ReplayFrameSource : IFrameSource
     /// <param name="directory">Directory of *.png frame dumps; enumerated once at construction.</param>
     public ReplayFrameSource(string directory) => _frames = EnumerateCorpus(directory);
 
-    public bool IsReplay => true;
+    public FrameSourceMode Mode => FrameSourceMode.ReplayCorpus;
 
     /// <summary>Number of PNGs in the corpus; the scan loop will produce exactly this many ticks.</summary>
     public int FrameCount => _frames.Length;
 
-    /// <summary>File name of the frame handed out by the last <see cref="NextFrameAsync"/>, for verbose logs.</summary>
+    /// <summary>File name of the frame handed out by the last <see cref="ReadFrameAsync"/>, for verbose logs.</summary>
     public string? LastFrameName { get; private set; }
 
-    public async Task<SoftwareBitmap?> NextFrameAsync(CancellationToken ct)
+    public async ValueTask<FrameReadResult> ReadFrameAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
         if (_next >= _frames.Length)
-            return null; // corpus exhausted
+            return FrameReadResult.EndOfStream; // corpus exhausted
 
         var path = _frames[_next++];
         LastFrameName = Path.GetFileName(path);
 
-        return await DecodeFrameAsync(path);
+        return FrameReadResult.Frame(await DecodeFrameAsync(path));
     }
 
     public void Dispose()
