@@ -148,7 +148,40 @@ public class ProtoMappingTests
 
         Assert.True(e.ReportedByEngine);
         Assert.Equal("setup_materials", e.RoiId);
-        Assert.Contains("outside the frame", e.Message);
+        Assert.Equal("ROI outside the frame", e.Message);
+    }
+
+    [Fact]
+    public void ToOcrRegionResult_OnEngineError_UsesFallbackBeforeKindAndScaleValidation()
+    {
+        var wire = ErrorResult();
+        wire.ErrorMessage = "";
+        wire.Kind = RoiResultKind.Pixels;
+        wire.EffectiveScale = 0;
+
+        var e = Assert.Throws<RoiResultException>(() => wire.ToOcrRegionResult());
+
+        Assert.True(e.ReportedByEngine);
+        Assert.Equal("the engine reported a ROI failure.", e.Message);
+    }
+
+    [Fact]
+    public void ToOcrRegionResult_OnPixelKind_ThrowsBeforeScaleValidation()
+    {
+        var wire = new RoiResult
+        {
+            RoiId = "setup_materials",
+            Kind = RoiResultKind.Pixels,
+            EffectiveScale = 0,
+        };
+
+        var e = Assert.Throws<RoiResultException>(() => wire.ToOcrRegionResult());
+
+        Assert.False(e.ReportedByEngine);
+        Assert.Equal(
+            "result is Pixels and cannot be read as OCR; the subscription's RoiMode does not " +
+            "match how 'setup_materials' is being looked up on the tick.",
+            e.Message);
     }
 
     [Fact]
@@ -192,7 +225,7 @@ public class ProtoMappingTests
         var e = Assert.Throws<RoiResultException>(() => wire.ToOcrRegionResult());
 
         Assert.False(e.ReportedByEngine);
-        Assert.Contains("effective_scale", e.Message);
+        Assert.Equal("effective_scale must be > 0 on a successful result (was 0).", e.Message);
     }
 
     // ---- pixel payload invariants -----------------------------------------------------
@@ -218,7 +251,9 @@ public class ProtoMappingTests
         var e = Assert.Throws<RoiResultException>(() => wire.ToPixelSampler());
 
         Assert.False(e.ReportedByEngine);
-        Assert.Contains("pixels_bgra", e.Message);
+        Assert.Equal(
+            "pixels_bgra has 8 bytes, needs 16 for 2x2 at stride 8.",
+            e.Message);
     }
 
     [Fact]
@@ -228,7 +263,35 @@ public class ProtoMappingTests
 
         var e = Assert.Throws<RoiResultException>(() => wire.ToPixelSampler());
 
-        Assert.Contains("pixels_stride", e.Message);
+        Assert.Equal("pixels_stride 4 is shorter than one row of 2 BGRA pixels.", e.Message);
+    }
+
+    [Fact]
+    public void ToPixelSampler_OnTextKind_ThrowsBeforeGeometryValidation()
+    {
+        var wire = PixelResult([], stride: uint.MaxValue, width: uint.MaxValue, height: 1);
+        wire.Kind = RoiResultKind.Text;
+
+        var e = Assert.Throws<RoiResultException>(() => wire.ToPixelSampler());
+
+        Assert.False(e.ReportedByEngine);
+        Assert.Equal(
+            "result is Text and cannot be read as pixel; the subscription's RoiMode does not " +
+            "match how 'refine_toggles' is being looked up on the tick.",
+            e.Message);
+    }
+
+    [Fact]
+    public void ToPixelSampler_WithOverflowingGeometry_ThrowsBeforeRowValidation()
+    {
+        var wire = PixelResult([], stride: uint.MaxValue, width: uint.MaxValue, height: 1);
+
+        var e = Assert.Throws<RoiResultException>(() => wire.ToPixelSampler());
+
+        Assert.False(e.ReportedByEngine);
+        Assert.Equal(
+            "pixel geometry overflows int (stride 4294967295, 4294967295x1).",
+            e.Message);
     }
 
     [Fact]
@@ -247,6 +310,7 @@ public class ProtoMappingTests
     {
         // A ROI the engine clamped to nothing is a legal, if useless, result.
         var wire = PixelResult([], stride: 0, width: 0, height: 0);
+        Assert.Equal(RoiResultKind.Unspecified, wire.Kind);
 
         var sampler = wire.ToPixelSampler();
 
