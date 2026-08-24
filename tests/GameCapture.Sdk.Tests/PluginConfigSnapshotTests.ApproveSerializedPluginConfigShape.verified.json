@@ -1,0 +1,70 @@
+﻿{
+  "ledgerPath": "ledger.csv",
+  "pipeName": "GameCapture.Engine",
+  "saveDebugFrames": false,
+  "outputs": [
+    {
+      "type": "json",
+      "dedupeOnChange": true,
+      "recordClears": false,
+      "path": "captures/records.jsonl",
+      "columns": null,
+      "url": null,
+      "timeoutSeconds": 5,
+      "overlay": null
+    },
+    {
+      "type": "csv",
+      "dedupeOnChange": true,
+      "recordClears": false,
+      "path": "captures/records.csv",
+      "columns": [
+        "timestamp",
+        "plugin",
+        "trigger",
+        "rawText"
+      ],
+      "url": null,
+      "timeoutSeconds": 5,
+      "overlay": null
+    },
+    {
+      "type": "http",
+      "dedupeOnChange": true,
+      "recordClears": true,
+      "path": null,
+      "columns": null,
+      "url": "https://example.test/records",
+      "timeoutSeconds": 7,
+      "overlay": null
+    },
+    {
+      "type": "overlay",
+      "dedupeOnChange": false,
+      "recordClears": false,
+      "path": null,
+      "columns": null,
+      "url": null,
+      "timeoutSeconds": 5,
+      "overlay": {
+        "anchor": 1,
+        "x": 32,
+        "y": 48,
+        "offsetX": 0,
+        "offsetY": 24,
+        "width": 420,
+        "height": 96,
+        "fontFamily": "Segoe UI",
+        "fontSize": 24,
+        "foregroundColor": "#FFFFFF",
+        "backgroundColor": "#111827",
+        "backgroundAlpha": 224,
+        "cornerRadius": 16,
+        "padding": 16,
+        "template": "{plugin}: {rawText}",
+        "lingerMs": 2500
+      }
+    }
+  ],
+  "configVersion": 0
+}

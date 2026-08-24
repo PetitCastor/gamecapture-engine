@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/GameCapture.Engine.Benchmarks/GameCapture.Engine.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/GameCapture.Contracts/GameCapture.Contracts.csproj" />
     <Project Path="src/GameCapture.Engine/GameCapture.Engine.csproj" />

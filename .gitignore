@@ -11,6 +11,8 @@ obj/
 Debug/
 Release/
 TestResults/
+BenchmarkDotNet.Artifacts/
+*.received.*
 
 # `dotnet pack -o` output. The packages are build products of a tagged commit; the release
 # pipeline publishes them to a feed, nothing here should carry them.
