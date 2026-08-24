@@ -119,10 +119,11 @@ One-shot OCR of a single ROI against the **most recently scanned frame** — a d
 aid, not a data path (`protos/capture.proto:16-17`, `CaptureGrpcService.ReadRoi`,
 `src/GameCapture.Engine/Grpc/CaptureGrpcService.cs:176-197`).
 
-- **One-shot vs. retained frame**: it deliberately does **not** capture a fresh frame. It reads
-  whatever `ScanLoop` last scanned, under the serialized gate owned by `RetainedFrameStore` and
-  exposed through `ScanLoop.FrameGate`, so it can never race a frame swap and OCR a disposed
-  bitmap. If the engine has not scanned anything yet, `ReadRoiResponse.no_frame` is `true` and
+- **One-shot vs. retained frame**: it deliberately does **not** capture a fresh frame. It leases
+  whatever `ScanLoop` last scanned from `RetainedFrameStore`, so a frame swap can proceed without
+  disposing a bitmap that an active read still uses. A separate two-operation gate bounds
+  concurrent unary/manual work and therefore bounds the number of superseded frames those leases
+  can retain. If the engine has not scanned anything yet, `ReadRoiResponse.no_frame` is `true` and
   there is no result.
 - Runs the exact same `ScanLoop.ReadOneAsync` path a live tick uses, so a calibration read behaves
   identically to what a subscribed ROI would have gotten on that frame.

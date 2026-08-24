@@ -12,7 +12,7 @@ PRs 8 and 9:
 - OCR crop and scale (`OcrPipeline.CropAndScaleAsync`)
 - Pixel sampling and wire serialization (`PixelStrip.CaptureAsync`, `ByteString.CopyFrom`)
 - Repeated equivalent ROI reads versus unique ROI reads (a complete `ScanLoop` tick for two clients)
-- Retained-frame gated access (`ScanLoop.FrameGate` + retained frame read)
+- Serialized versus reference-counted retained-frame reads
 
 CI builds this project but does not run timing thresholds.
 
@@ -67,3 +67,23 @@ The repeated workload clears the improvement gate. The unique workload is unchan
 ShortRun noise; its 0.01 KB allocation difference is about 0.01%. The implementation retains no
 `RoiResult` instances or pixel payloads between ticks, and discards dictionary capacity after a
 one-off tick exceeds 256 unique reads.
+
+## PR 9 — retained-frame lifetime
+
+PR 9 replaces the ownership gate held across each unary read with reference-counted leases. Frame
+replacement now holds only a short ownership lock; actual `ReadRoi`, `DumpFrame`, and manual-dump
+work shares a two-operation gate. At most two active operations can retain superseded bitmaps, so
+concurrency does not turn into unbounded retained memory.
+
+The `RetainedFrameBenchmarks` workload runs two 96x24 pixel reads concurrently. The before result
+was captured from `v1.1.15` with the stale benchmark setup repaired but the serialized
+`ScanLoop.FrameGate` behavior unchanged. The after result uses the lease path. Both are same-machine
+`ShortRun` measurements:
+
+| Benchmark | Before | After | Delta |
+| --- | ---: | ---: | ---: |
+| Two retained pixel reads mean | 549.8 us | 431.7 us | -21.5% |
+| Two retained pixel reads allocated | 77.85 KB | 77.76 KB | -0.09 KB |
+
+An in-branch serialized control measured 533.9 us / 78.01 KB, matching the tagged baseline within
+`ShortRun` noise. The lease path clears the latency gate without an allocation regression.

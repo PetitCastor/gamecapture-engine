@@ -66,19 +66,6 @@ internal sealed class ScanLoop : IDisposable
     public TimeSpan ScanInterval => _scanInterval;
 
     /// <summary>
-    /// Guards <see cref="RetainedFrame"/> against the loop replacing and disposing it. Held by
-    /// the unary RPCs for the duration of their read, so a ReadRoi can never race a swap and OCR
-    /// a disposed bitmap.
-    /// </summary>
-    public SemaphoreSlim FrameGate => _retainedFrameStore.Gate;
-
-    /// <summary>
-    /// Most recently scanned frame, or null before the first one. Callers MUST hold
-    /// <see cref="FrameGate"/> across both the read and their use of the bitmap.
-    /// </summary>
-    internal SoftwareBitmap? RetainedFrame => _retainedFrameStore.Frame;
-
-    /// <summary>
     /// Marks the next tick as manually triggered. Called from the hotkey listener's hook thread,
     /// which must return fast — hence a flag the loop picks up rather than any work done here.
     /// </summary>
@@ -86,7 +73,7 @@ internal sealed class ScanLoop : IDisposable
 
     /// <summary>
     /// Marks the next tick as manual and invokes <paramref name="onFrame"/> with that tick's
-    /// retained bitmap while <see cref="FrameGate"/> is held.
+    /// retained bitmap while the bounded retained-frame operation gate is held.
     /// </summary>
     public void TriggerManual(Func<SoftwareBitmap, Task> onFrame)
     {
@@ -249,6 +236,9 @@ internal sealed class ScanLoop : IDisposable
 
     public void Dispose()
         => _retainedFrameStore.Dispose();
+
+    internal ValueTask<RetainedFrameLease?> AcquireRetainedFrameLeaseAsync(CancellationToken cancellationToken)
+        => _retainedFrameStore.AcquireLeaseAsync(cancellationToken);
 
     /// <summary>
     /// Rejects a reference-space ROI that cannot touch the frame at all, instead of letting

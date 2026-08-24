@@ -9,7 +9,7 @@ namespace GameCapture.Engine.Grpc;
 /// from <see cref="EngineStatus"/>, the <see cref="SubscriptionRegistry"/> and the
 /// <see cref="ScanLoop"/>, so the scan loop and the RPC layer can never disagree about what the
 /// engine is doing. In particular no OCR runs here — the unary reads borrow the loop's retained
-/// frame under its gate.
+/// frame through bounded leases.
 /// </summary>
 /// <remarks>
 /// Public because Grpc.AspNetCore binds service methods through compiled delegates, which cannot
@@ -218,25 +218,18 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
     /// </summary>
     public override async Task<ReadRoiResponse> ReadRoi(ReadRoiRequest request, ServerCallContext ctx)
     {
-        await _scanLoop.FrameGate.WaitAsync(ctx.CancellationToken);
-        try
-        {
-            var bitmap = _scanLoop.RetainedFrame;
-            if (bitmap is null)
-                return new ReadRoiResponse { NoFrame = true };
+        using var lease = await _scanLoop.AcquireRetainedFrameLeaseAsync(ctx.CancellationToken);
+        if (lease is null)
+            return new ReadRoiResponse { NoFrame = true };
 
-            return new ReadRoiResponse
-            {
-                NoFrame = false,
-                Result = await _scanLoop.ReadOneAsync(bitmap, request.Roi ?? new RoiSpec()),
-                FrameWidth = (uint)bitmap.PixelWidth,
-                FrameHeight = (uint)bitmap.PixelHeight,
-            };
-        }
-        finally
+        var bitmap = lease.Bitmap;
+        return new ReadRoiResponse
         {
-            _scanLoop.FrameGate.Release();
-        }
+            NoFrame = false,
+            Result = await _scanLoop.ReadOneAsync(bitmap, request.Roi ?? new RoiSpec()),
+            FrameWidth = (uint)bitmap.PixelWidth,
+            FrameHeight = (uint)bitmap.PixelHeight,
+        };
     }
 
     /// <summary>
@@ -245,38 +238,31 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
     /// </summary>
     public override async Task<DumpFrameResponse> DumpFrame(DumpFrameRequest request, ServerCallContext ctx)
     {
-        await _scanLoop.FrameGate.WaitAsync(ctx.CancellationToken);
-        try
+        using var lease = await _scanLoop.AcquireRetainedFrameLeaseAsync(ctx.CancellationToken);
+        if (lease is null)
+            return new DumpFrameResponse { NoFrame = true };
+
+        var bitmap = lease.Bitmap;
+        var prefix = SanitizePrefix(request.Prefix);
+
+        string path;
+        if (request.FullFrame)
         {
-            var bitmap = _scanLoop.RetainedFrame;
-            if (bitmap is null)
-                return new DumpFrameResponse { NoFrame = true };
-
-            var prefix = SanitizePrefix(request.Prefix);
-
-            string path;
-            if (request.FullFrame)
-            {
-                path = await FrameSaver.SavePngAsync(bitmap, _config.OutputDir, prefix);
-            }
-            else
-            {
-                var reference = (request.Roi ?? new Rect()).ToRoiRect();
-                ScanLoop.EnsureRoiInFrame(reference, bitmap.PixelWidth, bitmap.PixelHeight);
-
-                var frameRect = RoiScaler.ToFrame(reference, bitmap.PixelWidth, bitmap.PixelHeight);
-                var bounds = OcrPipeline.ClampToBitmap(frameRect.ToBounds(), bitmap.PixelWidth, bitmap.PixelHeight);
-
-                using var crop = await _ocr.CropAndScaleAsync(bitmap, bounds, 1.0);
-                path = await FrameSaver.SavePngAsync(crop, _config.OutputDir, prefix);
-            }
-
-            return new DumpFrameResponse { NoFrame = false, Path = path };
+            path = await FrameSaver.SavePngAsync(bitmap, _config.OutputDir, prefix);
         }
-        finally
+        else
         {
-            _scanLoop.FrameGate.Release();
+            var reference = (request.Roi ?? new Rect()).ToRoiRect();
+            ScanLoop.EnsureRoiInFrame(reference, bitmap.PixelWidth, bitmap.PixelHeight);
+
+            var frameRect = RoiScaler.ToFrame(reference, bitmap.PixelWidth, bitmap.PixelHeight);
+            var bounds = OcrPipeline.ClampToBitmap(frameRect.ToBounds(), bitmap.PixelWidth, bitmap.PixelHeight);
+
+            using var crop = await _ocr.CropAndScaleAsync(bitmap, bounds, 1.0);
+            path = await FrameSaver.SavePngAsync(crop, _config.OutputDir, prefix);
         }
+
+        return new DumpFrameResponse { NoFrame = false, Path = path };
     }
 
     public override Task<StatusResponse> GetStatus(StatusRequest request, ServerCallContext ctx)
