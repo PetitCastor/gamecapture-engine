@@ -3,17 +3,17 @@ using Xunit;
 namespace GameCapture.Sdk.Tests;
 
 /// <summary>
-/// Gap detection, which decides when <see cref="SessionEvent.TicksDropped"/> fires. Unit tests
+/// Frame-sequence gap detection, which decides when <see cref="SessionEvent.TicksDropped"/> fires. Unit tests
 /// because every interesting case is a boundary an integration test cannot reach on demand — the
 /// first tick of a session, the first tick after a reconnect, an engine that restarted and is
 /// counting from zero again.
 /// </summary>
-public class FrameSeqTrackerTests
+public class FrameSequenceTrackerTests
 {
     [Fact]
-    public void FirstTick_IsNeverAGap()
+    public void FirstObservation_HasNoFrameSequenceGap()
     {
-        var tracker = new FrameSeqTracker();
+        var tracker = new FrameSequenceTracker();
 
         // Even a large first sequence: the engine has been scanning since it started, and a plugin
         // that connects to a long-running engine has not "missed" the frames from before it existed.
@@ -22,9 +22,9 @@ public class FrameSeqTrackerTests
     }
 
     [Fact]
-    public void ContiguousTicks_AreNotAGap()
+    public void ContiguousFrameSequences_HaveNoGap()
     {
-        var tracker = new FrameSeqTracker();
+        var tracker = new FrameSequenceTracker();
         tracker.TryObserve(1, out _);
 
         Assert.False(tracker.TryObserve(2, out var gap));
@@ -35,9 +35,9 @@ public class FrameSeqTrackerTests
     [InlineData(1ul, 3ul, 1ul)]
     [InlineData(10ul, 15ul, 4ul)]
     [InlineData(0ul, 100ul, 99ul)]
-    public void SkippedTicks_ReportTheCount(ulong first, ulong second, ulong expected)
+    public void FrameSequenceGap_ReportsSkippedFrameCount(ulong first, ulong second, ulong expected)
     {
-        var tracker = new FrameSeqTracker();
+        var tracker = new FrameSequenceTracker();
         tracker.TryObserve(first, out _);
 
         Assert.True(tracker.TryObserve(second, out var gap));
@@ -45,9 +45,9 @@ public class FrameSeqTrackerTests
     }
 
     [Fact]
-    public void RepeatedSequence_IsNotAGap()
+    public void RepeatedFrameSequence_HasNoGap()
     {
-        var tracker = new FrameSeqTracker();
+        var tracker = new FrameSequenceTracker();
         tracker.TryObserve(7, out _);
 
         Assert.False(tracker.TryObserve(7, out var gap));
@@ -56,13 +56,14 @@ public class FrameSeqTrackerTests
 
     /// <summary>
     /// The case unsigned arithmetic gets wrong if nobody thinks about it: a restarted engine counts
-    /// from zero again, so <c>seq - last - 1</c> would wrap to something near ulong.MaxValue and
+    /// from zero again, so <c>frameSequence - lastFrameSequence - 1</c> would wrap near
+    /// <c>ulong.MaxValue</c> and
     /// report a restart as billions of dropped frames.
     /// </summary>
     [Fact]
-    public void SequenceGoingBackwards_IsNotAnEnormousGap()
+    public void BackwardFrameSequence_HasNoEnormousGap()
     {
-        var tracker = new FrameSeqTracker();
+        var tracker = new FrameSequenceTracker();
         tracker.TryObserve(9_000, out _);
 
         Assert.False(tracker.TryObserve(1, out var gap));
@@ -70,13 +71,13 @@ public class FrameSeqTrackerTests
     }
 
     [Fact]
-    public void AfterBackwardsJump_CountsFromTheNewSequence()
+    public void AfterBackwardJump_GapUsesNewFrameSequence()
     {
-        var tracker = new FrameSeqTracker();
+        var tracker = new FrameSequenceTracker();
         tracker.TryObserve(9_000, out _);
         tracker.TryObserve(1, out _);
 
-        // The backwards tick was still recorded, so the next gap is measured against it.
+        // The backward frame sequence was still recorded, so the next gap is measured against it.
         Assert.True(tracker.TryObserve(4, out var gap));
         Assert.Equal(2ul, gap);
     }
@@ -87,9 +88,9 @@ public class FrameSeqTrackerTests
     /// client was away, so the event would fire on every single reconnect.
     /// </summary>
     [Fact]
-    public void Reset_MakesTheNextTickAFirstObservation()
+    public void Reset_MakesNextFrameSequenceAFirstObservation()
     {
-        var tracker = new FrameSeqTracker();
+        var tracker = new FrameSequenceTracker();
         tracker.TryObserve(10, out _);
 
         tracker.Reset();

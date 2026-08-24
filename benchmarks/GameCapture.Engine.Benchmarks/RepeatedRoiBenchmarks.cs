@@ -30,8 +30,8 @@ public class RepeatedRoiBenchmarks
     private readonly ConsoleSink _sink = new();
     private BenchmarkFrameSource _source = null!;
     private ScanLoop _loop = null!;
-    private ClientConnection _firstClient = null!;
-    private ClientConnection _secondClient = null!;
+    private ClientSubscription _firstClient = null!;
+    private ClientSubscription _secondClient = null!;
     private Task _run = null!;
     private int _configuredWorkload;
 

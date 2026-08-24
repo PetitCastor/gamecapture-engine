@@ -6,8 +6,8 @@ namespace GameCapture.Sdk;
 /// and what to do when the plugin throws.
 /// </summary>
 /// <remarks>
-/// Its own type because these decisions have state that outlives a single tick — the last sequence
-/// number, and which regions were already reported as failing — and because they are the part of
+/// Its own type because these decisions have state that outlives a single tick — the last frame
+/// sequence, and which regions were already reported as failing — and because they are the part of
 /// the host worth testing without a pipe. The connect/reconnect loop around it has nothing to say
 /// about any of it beyond calling <see cref="OnConnected"/>.
 /// </remarks>
@@ -16,7 +16,7 @@ internal sealed class TickDispatcher
     private readonly IGameCapturePlugin _plugin;
     private readonly PluginServices _services;
     private readonly IPluginOutput _output;
-    private readonly FrameSeqTracker _seq = new();
+    private readonly FrameSequenceTracker _frameSequenceTracker = new();
     private readonly RoiFailureLatch _failures = new();
 
     public TickDispatcher(IGameCapturePlugin plugin, PluginServices services, IPluginOutput output)
@@ -30,7 +30,7 @@ internal sealed class TickDispatcher
     /// A new session started.
     /// </summary>
     /// <remarks>
-    /// Resets the sequence baseline, because the engine kept scanning while the client was away: the
+    /// Resets the frame-sequence baseline, because the engine kept scanning while the client was away: the
     /// first tick of the new session is legitimately far ahead of the last of the old one, and
     /// reporting that as dropped ticks would fire the event on every reconnect there is.
     /// <para>
@@ -42,15 +42,15 @@ internal sealed class TickDispatcher
     /// </remarks>
     public void OnConnected()
     {
-        _seq.Reset();
+        _frameSequenceTracker.Reset();
         _failures.Reset();
     }
 
     /// <summary>Applies the policies and hands the tick to the plugin.</summary>
     public async Task DispatchAsync(TickData tick, CancellationToken ct)
     {
-        if (_seq.TryObserve(tick.FrameSeq, out var gap))
-            _plugin.OnSessionEvent(new SessionEvent.TicksDropped(gap));
+        if (_frameSequenceTracker.TryObserve(tick.FrameSeq, out var frameSequenceGap))
+            _plugin.OnSessionEvent(new SessionEvent.TicksDropped(frameSequenceGap));
 
         var policy = _plugin.ErrorPolicy;
         if (policy != RoiErrorPolicy.PassThrough)

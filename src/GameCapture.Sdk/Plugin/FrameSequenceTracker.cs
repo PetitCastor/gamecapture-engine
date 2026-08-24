@@ -7,42 +7,42 @@ namespace GameCapture.Sdk;
 /// Its own type, and unit-tested as one, because every interesting case here is a boundary the
 /// integration tests cannot reach on demand: the first tick of a session (nothing to compare
 /// against), the first tick after a reconnect (the engine's counter kept running while nobody was
-/// listening), and a sequence that goes backwards (a restarted engine counting from zero again).
+/// listening), and a frame sequence that goes backwards (a restarted engine counting from zero again).
 /// Provoking those against a live engine means racing it.
 /// </remarks>
-internal sealed class FrameSeqTracker
+internal sealed class FrameSequenceTracker
 {
-    private ulong? _last;
+    private ulong? _lastFrameSequence;
 
     /// <summary>
-    /// Records <paramref name="seq"/> and reports how many frames were skipped to reach it.
+    /// Records <paramref name="frameSequence"/> and reports the frame-sequence gap used to reach it.
     /// </summary>
     /// <returns>
-    /// True when frames were missed, with <paramref name="gap"/> set to how many. False — gap 0 —
-    /// for a contiguous tick, for the first tick observed, and for a sequence that did not advance
-    /// or ran backwards.
+    /// True when frames were missed, with <paramref name="frameSequenceGap"/> set to how many.
+    /// False — gap 0 — for a contiguous tick, for the first tick observed, and for a frame
+    /// sequence that did not advance or ran backwards.
     /// </returns>
     /// <remarks>
-    /// A sequence going backwards is a fresh engine, not a gap: the counter is per engine process,
+    /// A frame sequence going backwards is a fresh engine, not a frame-sequence gap: the counter is per engine process,
     /// so a restart mid-run replays low numbers the client has already seen. Reporting that as a
     /// negative gap would be nonsense and reporting it as a huge one — the unsigned subtraction, if
     /// nobody thought about it — would be worse.
     /// </remarks>
-    public bool TryObserve(ulong seq, out ulong gap)
+    public bool TryObserve(ulong frameSequence, out ulong frameSequenceGap)
     {
-        gap = 0;
-        var previous = _last;
-        _last = seq;
+        frameSequenceGap = 0;
+        var previous = _lastFrameSequence;
+        _lastFrameSequence = frameSequence;
 
-        if (previous is not { } last || seq <= last)
+        if (previous is not { } last || frameSequence <= last)
             return false;
 
-        gap = seq - last - 1;
-        return gap > 0;
+        frameSequenceGap = frameSequence - last - 1;
+        return frameSequenceGap > 0;
     }
 
     /// <summary>
-    /// Forgets the sequence seen so far, so the next tick counts as a first observation.
+    /// Forgets the frame sequence seen so far, so the next tick counts as a first observation.
     /// </summary>
     /// <remarks>
     /// Called on reconnect. The engine keeps scanning while a client is away, so the first tick of
@@ -50,5 +50,5 @@ internal sealed class FrameSeqTracker
     /// dropped ticks would fire the event on every single reconnect, which is exactly the noise
     /// that teaches a plugin author to ignore it.
     /// </remarks>
-    public void Reset() => _last = null;
+    public void Reset() => _lastFrameSequence = null;
 }

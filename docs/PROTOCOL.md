@@ -145,7 +145,7 @@ or two subscriptions.
 
 ## Backpressure and stream end
 
-Each connection has a bounded outbound channel of **4 ticks** (`ClientConnection.cs:18`, ~2 s at the
+Each subscription has a bounded outbound channel of **4 ticks** (`ClientSubscription.cs:18`, ~2 s at the
 default 500 ms cadence). The overflow policy depends on the frame source:
 
 | Mode | Policy | Why |
@@ -153,7 +153,7 @@ default 500 ms cadence). The overflow policy depends on the frame source:
 | Live | `DropOldest` | The freshest screen state is the only one worth acting on; a slow plugin must never stall the scan loop or the other plugins. |
 | Replay | `Wait` | A dropped frame changes the outcome, and determinism is the whole point of a corpus run. |
 
-A plugin that falls behind in live mode therefore sees a **gap in `frame_seq`**, never a stale
+A plugin that falls behind in live mode therefore sees a **frame-sequence gap in `frame_seq`**, never a stale
 backlog — `frame_seq` is monotonic per scanned frame and is the only way to detect the drop.
 
 Replay adds a start gate: the engine does not consume the corpus until at least one client has sent

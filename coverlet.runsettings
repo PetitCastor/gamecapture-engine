@@ -17,11 +17,11 @@
 
   - Trackers/TrackerHost.cs and Trackers/FrameDumpTracker.cs are gone with the files. ScanLoop,
     which replaced TrackerHost, is directly tested and therefore stays gated.
-  - Core/ProbeConfig.cs became Core/EngineConfig.cs, still excluded — it is the same
+  - The former ProbeConfig.cs became Configuration/EngineConfig.cs, still excluded — it is the same
     exists/write-defaults/deserialize body. The plugins' MissionConfig.cs and RefineryConfig.cs
     are NOT excluded despite the same shape: RefineryConfig.ResolveLedgerPath carries the rule
     that keeps a replay from writing into real order history, and LedgerTargetTests pins it.
-  - Core/LiveFrameSource.cs is added: it is the WGC frame pump extracted out of the monolith's
+  - Capture/LiveFrameSource.cs is added: it is the WGC frame pump extracted out of the monolith's
     MonitorCapture path, and like MonitorCapture it cannot run without a live capture session.
   - Tray/TrayApplication.cs, Tray/StatusForm.cs, Tray/SettingsForm.cs and Tray/TrayIconFactory.cs are
     the in-process tray's STA message loop, WinForms popup, settings dialog and GDI icon drawing —
@@ -31,7 +31,7 @@
     only consumers are the excluded UI-edge files, so it is excluded too; Tray/EngineSettings.cs carries
     the value-equality the no-op-save guard relies on and stays gated (EngineSettingsTests).
 
-  TASK-8's brief also listed Core/HotkeyListener.cs and Core/OcrPipeline.cs as process-edge files
+  TASK-8's brief also listed Hosting/HotkeyListener.cs and Processing/OcrPipeline.cs as process-edge files
   to exclude. They are deliberately NOT excluded, because the same task moved 28 tests onto their
   pure helpers (ParseHotkey, EffectiveScale, CropAndScale, the language diagnostics). Excluding
   them would hide the most-tested arithmetic in the engine from the gate, which contradicts the
@@ -56,11 +56,11 @@
         <Configuration>
           <Format>cobertura</Format>
           <ExcludeByFile>
-            **/Core/CaptureInterop.cs,
-            **/Core/MonitorCapture.cs,
-            **/Core/LiveFrameSource.cs,
-            **/Core/FrameSaver.cs,
-            **/Core/EngineConfig.cs,
+            **/Capture/CaptureInterop.cs,
+            **/Capture/MonitorCapture.cs,
+            **/Capture/LiveFrameSource.cs,
+            **/Operations/FrameSaver.cs,
+            **/Configuration/EngineConfig.cs,
             **/ConsoleSink.cs,
             **/NamedPipeChannel.cs,
             **/Metrics/MetricsSampler.cs,

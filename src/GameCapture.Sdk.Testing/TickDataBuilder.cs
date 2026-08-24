@@ -124,7 +124,7 @@ public sealed class TickDataBuilder
         return this;
     }
 
-    /// <summary>Overrides the auto-incrementing frame sequence — for tests asserting gap/repeat
+    /// <summary>Overrides the auto-incrementing frame sequence — for tests asserting frame-sequence gaps/repeats
     /// detection, which needs specific, not merely distinct, values.</summary>
     public TickDataBuilder FrameSeq(ulong seq)
     {
