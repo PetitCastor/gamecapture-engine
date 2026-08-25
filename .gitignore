@@ -23,6 +23,11 @@ artifacts/
 # Runtime output
 captures/
 
+# Excluded from version control per request
+benchmarks/
+docs/
+scripts/
+
 # Dependencies
 packages/
 .nuget/
