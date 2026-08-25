@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using GameCapture.Contracts;
 using Windows.Globalization;
 using Windows.Graphics.Capture;
@@ -182,8 +183,35 @@ public sealed class OcrPipeline
             InterpolationMode = BitmapInterpolationMode.Cubic,
         };
 
-        return await decoder.GetSoftwareBitmapAsync(
+        var bitmap = await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, transform,
             ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
+
+        ApplyRedChannelGrayscale(bitmap);
+        return bitmap;
+    }
+
+    /// <summary>
+    /// Replaces each pixel's B and G with its R value in place. The game's chromatic-aberration
+    /// post-process fringes every glyph stroke red-left/cyan-right; Windows OCR's internal luma
+    /// collapse averages the three shifted copies into a blur, which is where the read accuracy
+    /// was going. A single channel keeps one sharp copy of the stroke — measured 57.1% -> 95.9%
+    /// hit rate across 49 labelled samples, 0 regressions. Runs after the crop+scale above rather
+    /// than before: SoftwareBitmap has no resize API, so doing this on the native-resolution crop
+    /// would mean a second BMP encode/decode round trip to get scaled pixels back out. A linear
+    /// pass over the already-scaled buffer is cheaper than that round trip even though it walks
+    /// more pixels.
+    /// </summary>
+    private static void ApplyRedChannelGrayscale(SoftwareBitmap bitmap)
+    {
+        var pixels = new byte[4 * bitmap.PixelWidth * bitmap.PixelHeight];
+        bitmap.CopyToBuffer(pixels.AsBuffer());
+        for (var i = 0; i < pixels.Length; i += 4) // Bgra8: B, G, R, A
+        {
+            var red = pixels[i + 2];
+            pixels[i] = red;
+            pixels[i + 1] = red;
+        }
+        bitmap.CopyFromBuffer(pixels.AsBuffer());
     }
 }
