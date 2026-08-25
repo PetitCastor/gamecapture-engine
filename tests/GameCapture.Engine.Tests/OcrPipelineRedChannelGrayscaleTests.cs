@@ -5,11 +5,11 @@ using Xunit;
 namespace GameCapture.Engine.Tests;
 
 /// <summary>
-/// Proves every crop leaving <see cref="OcrPipeline.CropAndScaleAsync"/> has its B and G channels
-/// overwritten with R, not just that red content survives. The chromatic-aberration fix depends on
-/// Windows OCR's internal luma collapse landing on a pure red-channel value rather than an R/G/B
-/// average, so a test that only checked "still looks red" would pass even if the overwrite silently
-/// stopped happening.
+/// <see cref="OcrPipeline.ApplyRedChannelGrayscale"/> is called only from the OCR read paths, never
+/// from <see cref="OcrPipeline.CropAndScaleAsync"/> itself — that method is a shared true-color
+/// utility also consumed by non-OCR callers (pixel-sampling reads, ROI debug/corpus dumps). These
+/// tests cover both halves of that split: the transform itself, in isolation, and a regression guard
+/// proving <c>CropAndScaleAsync</c> keeps returning true color.
 /// </summary>
 public class OcrPipelineRedChannelGrayscaleTests
 {
@@ -36,35 +36,30 @@ public class OcrPipelineRedChannelGrayscaleTests
         return bytes;
     }
 
-    /// <summary>Every pixel carries a distinct B/G/R so an overwrite is unmistakable, none of them equal.</summary>
-    private static SoftwareBitmap MakeFrameWithDistinctChannels()
+    /// <summary>Every pixel carries a distinct B/G/R so an overwrite (or a missing one) is unmistakable.</summary>
+    private static SoftwareBitmap MakeBitmapWithDistinctChannels(int width, int height)
     {
-        var bytes = new byte[FrameWidth * FrameHeight * 4];
-        for (var y = 0; y < FrameHeight; y++)
+        var bytes = new byte[width * height * 4];
+        for (var i = 0; i < bytes.Length; i += 4)
         {
-            for (var x = 0; x < FrameWidth; x++)
-            {
-                var i = (y * FrameWidth + x) * 4;
-                bytes[i] = 150;     // B
-                bytes[i + 1] = 200; // G
-                bytes[i + 2] = 10;  // R
-                bytes[i + 3] = 255; // A
-            }
+            bytes[i] = 150;     // B
+            bytes[i + 1] = 200; // G
+            bytes[i + 2] = 10;  // R
+            bytes[i + 3] = 255; // A
         }
 
-        var frame = new SoftwareBitmap(BitmapPixelFormat.Bgra8, FrameWidth, FrameHeight, BitmapAlphaMode.Ignore);
-        frame.CopyFromBuffer(ToBuffer(bytes));
-        return frame;
+        var bitmap = new SoftwareBitmap(BitmapPixelFormat.Bgra8, width, height, BitmapAlphaMode.Ignore);
+        bitmap.CopyFromBuffer(ToBuffer(bytes));
+        return bitmap;
     }
 
     [Fact]
-    public async Task CropAndScale_EveryPixel_HasBAndGOverwrittenWithR()
+    public void ApplyRedChannelGrayscale_EveryPixel_HasBAndGOverwrittenWithR()
     {
-        var ocr = new OcrPipeline();
-        using var frame = MakeFrameWithDistinctChannels();
+        using var bitmap = MakeBitmapWithDistinctChannels(FrameWidth, FrameHeight);
 
-        using var crop = await ocr.CropAndScaleAsync(frame, WholeFrame, 3.0);
-        var bytes = ToBytes(crop);
+        OcrPipeline.ApplyRedChannelGrayscale(bitmap);
+        var bytes = ToBytes(bitmap);
 
         for (var i = 0; i < bytes.Length; i += 4)
         {
@@ -77,17 +72,39 @@ public class OcrPipelineRedChannelGrayscaleTests
     }
 
     [Fact]
-    public async Task CropAndScale_AtOneToOne_ReplicatesTheSourceRedValueExactly()
+    public void ApplyRedChannelGrayscale_PreservesTheOriginalRedValueAndAlpha()
     {
-        // Scale 1.0 skips Cubic interpolation's smoothing, so the source R value should survive
-        // into the grayscale output unchanged rather than merely "close".
-        var ocr = new OcrPipeline();
-        using var frame = MakeFrameWithDistinctChannels();
+        using var bitmap = MakeBitmapWithDistinctChannels(FrameWidth, FrameHeight);
 
-        using var crop = await ocr.CropAndScaleAsync(frame, WholeFrame, 1.0);
+        OcrPipeline.ApplyRedChannelGrayscale(bitmap);
+        var bytes = ToBytes(bitmap);
+
+        for (var i = 0; i < bytes.Length; i += 4)
+        {
+            Assert.Equal(10, bytes[i + 2]);  // R untouched
+            Assert.Equal(255, bytes[i + 3]); // A untouched
+        }
+    }
+
+    [Fact]
+    public async Task CropAndScaleAsync_DoesNotApplyTheGrayscaleItself()
+    {
+        // Regression guard: CropAndScaleAsync is a shared true-color crop/scale utility consumed
+        // by non-OCR callers (pixel sampling, ROI debug dumps) that must not receive an OCR-only
+        // preprocessing step. Only the OCR read paths call ApplyRedChannelGrayscale explicitly.
+        var ocr = new OcrPipeline();
+        using var frame = MakeBitmapWithDistinctChannels(FrameWidth, FrameHeight);
+
+        using var crop = await ocr.CropAndScaleAsync(frame, WholeFrame, 3.0);
         var bytes = ToBytes(crop);
 
         for (var i = 0; i < bytes.Length; i += 4)
-            Assert.Equal(10, bytes[i + 2]);
+        {
+            var b = bytes[i];
+            var g = bytes[i + 1];
+            var r = bytes[i + 2];
+            Assert.False(b == r && g == r,
+                $"pixel at byte {i}: true color was collapsed to grayscale (B={b} G={g} R={r})");
+        }
     }
 }

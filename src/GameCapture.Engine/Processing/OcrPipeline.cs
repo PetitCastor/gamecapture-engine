@@ -84,6 +84,7 @@ public sealed class OcrPipeline
     public async Task<string> ReadRegionAsync(SoftwareBitmap frame, BitmapBounds roi, double scale)
     {
         using var crop = await CropAndScaleAsync(frame, roi, scale);
+        ApplyRedChannelGrayscale(crop);
         var result = await _engine.RecognizeAsync(crop);
         return result.Text;
     }
@@ -101,6 +102,7 @@ public sealed class OcrPipeline
         var clamped = ClampToBitmap(roi, frame.PixelWidth, frame.PixelHeight);
         var effective = EffectiveScale(clamped, scale);
         using var crop = await CropAndScaleAsync(frame, clamped, scale);
+        ApplyRedChannelGrayscale(crop);
         var result = await _engine.RecognizeAsync(crop);
 
         var lines = new List<OcrLineInfo>(result.Lines.Count);
@@ -183,26 +185,34 @@ public sealed class OcrPipeline
             InterpolationMode = BitmapInterpolationMode.Cubic,
         };
 
-        var bitmap = await decoder.GetSoftwareBitmapAsync(
+        return await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, transform,
             ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
-
-        ApplyRedChannelGrayscale(bitmap);
-        return bitmap;
     }
 
     /// <summary>
     /// Replaces each pixel's B and G with its R value in place. The game's chromatic-aberration
     /// post-process fringes every glyph stroke red-left/cyan-right; Windows OCR's internal luma
-    /// collapse averages the three shifted copies into a blur, which is where the read accuracy
+    /// collapse averages the three shifted copies into a blur, which is where OCR read accuracy
     /// was going. A single channel keeps one sharp copy of the stroke — measured 57.1% -> 95.9%
-    /// hit rate across 49 labelled samples, 0 regressions. Runs after the crop+scale above rather
-    /// than before: SoftwareBitmap has no resize API, so doing this on the native-resolution crop
-    /// would mean a second BMP encode/decode round trip to get scaled pixels back out. A linear
-    /// pass over the already-scaled buffer is cheaper than that round trip even though it walks
-    /// more pixels.
+    /// hit rate across 49 labelled samples, 0 regressions.
+    /// <para>
+    /// Called only from the OCR read paths (<see cref="ReadRegionAsync"/>,
+    /// <see cref="ReadRegionDetailedAsync"/>) on their own local crop, after
+    /// <see cref="CropAndScaleAsync"/> returns — never inside <see cref="CropAndScaleAsync"/>
+    /// itself. That method is a shared true-color crop/scale utility: <c>PixelSampler</c> and
+    /// <c>CaptureGrpcService.DumpFrame</c> both call it directly for non-OCR consumers
+    /// (<c>RoiMode.Pixels</c> readers like <c>RefineryPlugin.IsRefineOn</c>, and ROI debug/corpus
+    /// dumps) that need the real captured color, not an OCR-only grayscale collapse.
+    /// </para>
+    /// Runs after the crop+scale rather than before: <see cref="SoftwareBitmap"/> has no resize
+    /// API, so doing this on the native-resolution crop would mean a second BMP encode/decode
+    /// round trip to get scaled pixels back out. A linear pass over the already-scaled buffer is
+    /// cheaper than that round trip even though it walks more pixels. Internal, not private: the
+    /// test suite exercises it directly as a pure buffer transform, without needing a real OCR
+    /// engine or a full crop/scale round trip.
     /// </summary>
-    private static void ApplyRedChannelGrayscale(SoftwareBitmap bitmap)
+    internal static void ApplyRedChannelGrayscale(SoftwareBitmap bitmap)
     {
         var pixels = new byte[4 * bitmap.PixelWidth * bitmap.PixelHeight];
         bitmap.CopyToBuffer(pixels.AsBuffer());
