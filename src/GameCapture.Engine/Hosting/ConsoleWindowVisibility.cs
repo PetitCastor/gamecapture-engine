@@ -4,46 +4,31 @@ using System.Runtime.InteropServices;
 namespace GameCapture.Engine;
 
 /// <summary>
-/// Hides the process's console window for anything but a local debug session. Installed and run as
-/// a background/tray app, the engine has no console for a human to read; a debugger attached (F5 in
-/// an IDE, or attach-to-process) is the signal that a developer wants to see it.
+/// Keeps normal launches console-free and allocates a console for a debugger-attached startup. The
+/// check runs before top-level startup creates the output sink, so Visual Studio F5 has the same
+/// banner and status output as the former console-subsystem executable.
 /// </summary>
 internal static class ConsoleWindowVisibility
 {
-    private const int SW_HIDE = 0;
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool AllocConsole();
 
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetConsoleWindow();
 
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetConsoleProcessList(uint[] processList, uint processCount);
+    /// <summary>Whether this process currently has a console available for interactive output.</summary>
+    public static bool HasConsole => GetConsoleWindow() != IntPtr.Zero;
 
     /// <summary>
-    /// Hides the console window unless a debugger is attached, or this process is not the console's
-    /// sole owner. A console-subsystem exe launched from an already-open shell (a plain `dotnet run`
-    /// or double-clicking the exe from inside a terminal, with no CREATE_NEW_CONSOLE) inherits that
-    /// shell's console instead of getting one of its own — <see cref="GetConsoleWindow"/> then returns
-    /// the *shared* window, and hiding it would hide the developer's whole terminal. Only a launch that
-    /// got a fresh console of its own (double-click from Explorer, Task Scheduler, a shortcut) is safe
-    /// to hide this way.
+    /// Allocates the debug console before application startup creates its output sink. A normal
+    /// WinExe launch remains console-free; an already-attached debugger is the explicit developer
+    /// signal that the banner and status console should be available.
     /// </summary>
-    public static void HideUnlessDebugging()
+    public static void EnsureDebugConsole()
     {
-        if (Debugger.IsAttached || !OwnsConsoleExclusively())
+        if (!Debugger.IsAttached || HasConsole)
             return;
 
-        var handle = GetConsoleWindow();
-        if (handle != IntPtr.Zero)
-            ShowWindow(handle, SW_HIDE);
-    }
-
-    private static bool OwnsConsoleExclusively()
-    {
-        var buffer = new uint[2];
-        var attached = GetConsoleProcessList(buffer, (uint)buffer.Length);
-        return attached <= 1;
+        _ = AllocConsole();
     }
 }

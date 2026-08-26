@@ -1,5 +1,7 @@
 using GameCapture.Engine;
 
+ConsoleWindowVisibility.EnsureDebugConsole();
+
 // First statement so every later write goes through it and disposal (status-bar erase,
 // cursor restore) is guaranteed on every return path.
 using var sink = new ConsoleSink();
@@ -7,7 +9,16 @@ using var sink = new ConsoleSink();
 sink.WriteLine("=== GameCapture — Capture Engine ===");
 
 var configPath = EngineConfig.GetDefaultPath();
-var config = EngineConfig.Load(configPath);
+EngineConfig config;
+try
+{
+    config = EngineConfig.Load(configPath);
+}
+catch (Exception ex)
+{
+    StartupDiagnostics.Report($"Could not load engine configuration '{configPath}'.", ex);
+    return 1;
+}
 
 // CLI: --pipe <name>, --ocr-lang <bcp47>, --monitor <index> (each overrides config),
 //      --replay <dir> (feed saved PNGs through the engine instead of live capture),
@@ -26,13 +37,13 @@ string? ArgValue(string name) => args
 var pipeName = ArgValue("--pipe") ?? config.PipeName;
 if (string.IsNullOrWhiteSpace(pipeName))
 {
-    Console.Error.WriteLine("Pipe name must not be blank (set \"pipeName\" in engine-config.json or pass --pipe).");
+    StartupDiagnostics.Report("Pipe name must not be blank (set \"pipeName\" in engine-config.json or pass --pipe).");
     return 1;
 }
 
 if (!FrameSourceFactory.TryValidate(args, config, saveFrames, out var sourceFactory, out var sourceError))
 {
-    Console.Error.WriteLine(sourceError);
+    StartupDiagnostics.Report(sourceError);
     return 1;
 }
 
@@ -44,14 +55,14 @@ try
 }
 catch (InvalidOperationException ex)
 {
-    Console.Error.WriteLine(ex.Message);
+    StartupDiagnostics.Report(ex.Message, ex);
     return 1;
 }
 
 var sourceCreation = await sourceFactory.CreateAsync(sink);
 if (!sourceCreation.Succeeded)
 {
-    Console.Error.WriteLine(sourceCreation.Error);
+    StartupDiagnostics.Report(sourceCreation.Error);
     return 1;
 }
 
@@ -69,7 +80,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine($"Failed to start on pipe '{pipeName}': {ex.Message}");
+    StartupDiagnostics.Report($"Failed to start on pipe '{pipeName}': {ex.Message}", ex);
     return 1;
 }
 
@@ -83,23 +94,36 @@ sink.WriteLine($"Dumps:     {config.OutputDir}");
 sink.WriteLine($"SaveFrames: {(saveFrames ? "on" : "off")}");
 sink.WriteLine($"Verbose:   {(verbose ? "on" : "off")}");
 
-using var desktop = EngineDesktopLifetime.Create(
-    engine, config, configPath, args, sourceSelection, saveFrames, sink);
-
-sink.WriteLine();
-sink.WriteLine(livePaced
-    ? "Scanning. Ctrl+C to quit."
-    : "Waiting for a plugin to subscribe before replaying. Ctrl+C to quit.");
-sink.WriteLine();
-
+EngineDesktopLifetime desktop;
 try
 {
-    desktop.Start();
-    await engine.RunScanAsync(desktop.CancellationToken);
+    desktop = EngineDesktopLifetime.Create(
+        engine, config, configPath, args, sourceSelection, saveFrames, sink);
 }
-finally
+catch (Exception ex)
 {
-    desktop.Stop();
+    StartupDiagnostics.Report("Failed to initialize engine desktop services.", ex);
+    await engine.StopAsync();
+    return 1;
+}
+
+using (desktop)
+{
+    sink.WriteLine();
+    sink.WriteLine(livePaced
+        ? "Scanning. Ctrl+C to quit."
+        : "Waiting for a plugin to subscribe before replaying. Ctrl+C to quit.");
+    sink.WriteLine();
+
+    try
+    {
+        desktop.Start();
+        await engine.RunScanAsync(desktop.CancellationToken);
+    }
+    finally
+    {
+        desktop.Stop();
+    }
 }
 
 await engine.StopAsync();

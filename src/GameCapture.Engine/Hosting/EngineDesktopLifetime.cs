@@ -123,9 +123,6 @@ internal sealed class EngineDesktopLifetime : IDisposable
         if (_metrics is not null)
             _metrics.Sampled += _tray.OnMetrics;
 
-        // Keep the console as the fallback UI if tray startup failed in a non-interactive session.
-        if (_tray.IsActive)
-            ConsoleWindowVisibility.HideUnlessDebugging();
     }
 
     /// <summary>Relaunches after the engine has stopped and released its named pipe, if requested.</summary>
