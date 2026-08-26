@@ -14,7 +14,11 @@ internal static class StartupDiagnostics
         var displayMessage = message ?? exception?.Message ?? "The engine failed during startup.";
         var detail = exception is null ? displayMessage : $"{displayMessage}{Environment.NewLine}{exception}";
 
-        if (ConsoleWindowVisibility.HasConsole)
+        // A console window is one way to have a readable stderr, but not the only one: a CLI/replay
+        // invocation (ReplayHarness, a plugin's CI, a script) launches this WinExe with stderr
+        // redirected to a pipe and no console window at all. HasConsole alone would silently drop
+        // those errors into the Event Log instead of the pipe the caller is actually reading.
+        if (ConsoleWindowVisibility.HasConsole || Console.IsErrorRedirected)
         {
             Console.Error.WriteLine(displayMessage);
             return;
