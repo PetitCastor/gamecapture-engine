@@ -33,6 +33,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Restores `vpk` (the Velopack CLI) from .config/dotnet-tools.json. A pinned local tool rather
+      # than `dotnet tool install -g vpk`, so the packer version is reviewable in git and a run six
+      # months from now cuts the installer with the same CLI this one did — Velopack's flags have
+      # drifted across versions. The manifest pins vpk to the same version as the Velopack
+      # PackageReference in GameCapture.Engine.csproj; vpk warns when the two disagree.
+      - name: Restore dotnet tools
+        run: dotnet tool restore
+
       # Every merge to master is a release. The workflow owns the tag so packages, the engine and
       # the GitHub release all carry the same stable version. Pre-release tags are ignored: they are
       # historical rehearsal tags and must not become the base for the next production patch.
@@ -98,6 +106,44 @@ jobs:
           if ($missing) { throw "Missing from publish output: $($missing -join ', ')" }
           Compress-Archive -Path $files -DestinationPath "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip"
 
+      # Velopack turns the same publish output into an installer. The zip above is deliberately NOT
+      # replaced: gamecapture-plugins' ci.yml and release.yml both resolve the pinned engine with
+      # `gh release download -p "GameCapture.Engine-*-win-x64.zip"` followed by Expand-Archive, so
+      # renaming or dropping that asset breaks plugin CI on the next tag. Setup.exe is an addition
+      # for humans; the zip stays the machine-readable contract.
+      #
+      # packId is the permanent identity of the update feed — every future release must keep using
+      # GameCaptureEngine or existing installs stop seeing updates. It is spelled without dots so it
+      # cannot collide with the `GameCapture.Engine-*` zip glob above.
+      #
+      # --noPortable: vpk's portable bundle would duplicate what the zip already provides, under a
+      # second name, and only invites confusion about which artifact plugin CI wants.
+      # --exclude widens vpk's default (.pdb only) to the rest of what PublishSingleFile leaves
+      # loose next to the exe — the .xml docs GenerateDocumentationFile drops from the referenced
+      # libraries. See the Archive step's comment for the full inventory.
+      # The Test-Path guard mirrors that step: a vpk that silently produced nothing must fail the
+      # release, not ship a tag whose Setup.exe is missing.
+      - name: Package Velopack installer
+        run: |
+          dotnet vpk pack `
+            --packId GameCaptureEngine `
+            --packVersion "${env:RELEASE_VERSION}" `
+            --packDir publish/engine `
+            --mainExe GameCapture.Engine.exe `
+            --packTitle "GameCapture Engine" `
+            --packAuthors "PetitCastor" `
+            --icon assets/app.ico `
+            --exclude '.*\.(pdb|xml)$' `
+            --noPortable `
+            --outputDir releases
+          $expected = @(
+            "releases/GameCaptureEngine-Setup.exe"
+            "releases/releases.win.json"
+            "releases/GameCaptureEngine-${env:RELEASE_VERSION}-full.nupkg"
+          )
+          $missing = $expected | Where-Object { -not (Test-Path $_) }
+          if ($missing) { throw "vpk pack did not produce: $($missing -join ', ')" }
+
       # GitHub release created BEFORE the NuGet push, and named explicitly rather than via a glob:
       # windows-latest's default shell is pwsh, and pwsh does not glob-expand arguments to native
       # executables (only cmdlet parameters) — `GameCapture.Engine-*.zip` reaches `gh` as that
@@ -106,10 +152,22 @@ jobs:
       # Ordered ahead of the NuGet steps on purpose: if the OIDC exchange or the nuget.org push
       # fails, the GitHub release and its engine zip have already landed rather than being lost
       # along with it.
+      #
+      # Four assets now. The zip is first and unchanged — it is what gamecapture-plugins downloads.
+      # Setup.exe is what a human installs. releases.win.json is the update feed Velopack's
+      # UpdateManager reads off this release, and the -full.nupkg is the payload that feed points
+      # at: both must be present on every release or an installed engine cannot self-update, so
+      # they are release assets rather than build-only artifacts.
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${env:RELEASE_TAG}" "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip" --title "${env:RELEASE_TAG}" --generate-notes --target "${{ github.sha }}"
+        run: |
+          gh release create "${env:RELEASE_TAG}" `
+            "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip" `
+            "releases/GameCaptureEngine-Setup.exe" `
+            "releases/releases.win.json" `
+            "releases/GameCaptureEngine-${env:RELEASE_VERSION}-full.nupkg" `
+            --title "${env:RELEASE_TAG}" --generate-notes --target "${{ github.sha }}"
 
       # OIDC → short-lived API key, scoped to this job only. No NUGET_API_KEY secret exists anywhere
       # in this repo: nothing long-lived to rotate or leak.

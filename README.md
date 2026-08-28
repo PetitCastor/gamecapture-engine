@@ -46,7 +46,7 @@ below. Clone this one only to work on the engine, the protocol, or the SDK itsel
 | [`GameCapture.Contracts`](https://www.nuget.org/packages/GameCapture.Contracts) | Generated wire-contract code plus the pure types both sides share. |
 | [`GameCapture.Sdk.Testing`](https://www.nuget.org/packages/GameCapture.Sdk.Testing) | Testing companion: `TickDataBuilder`, `FakePluginServices`, `ReplayHarness`, `EngineLocator`. |
 | [`GameCapture.Plugin.Template`](https://www.nuget.org/packages/GameCapture.Plugin.Template) | `dotnet new gamecapture-plugin` — a working plugin plus its test project. |
-| [Releases](https://github.com/PetitCastor/gamecapture-engine/releases) | `GameCapture.Engine-vX.Y.Z-win-x64.zip`, a self-contained engine exe. |
+| [Releases](https://github.com/PetitCastor/gamecapture-engine/releases) | `GameCaptureEngine-Setup.exe`, an installer, and `GameCapture.Engine-vX.Y.Z-win-x64.zip`, the same self-contained engine exe unpackaged. See [`docs/INSTALLING.md`](docs/INSTALLING.md). |
 
 All four packages share one version train (MinVer, off the `v*` tag): one release is one compatible
 set. See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
@@ -72,9 +72,11 @@ That writes the whole thing: `MyPlugin.csproj` (a `PackageReference` on `GameCap
 `GameCapture.Sdk.Testing`, and a CI workflow stub. `--SdkVersion` pins the package version
 (default `1.*`).
 
-**2. Get an engine to talk to.** Either download `GameCapture.Engine-vX.Y.Z-win-x64.zip` from
-[Releases](https://github.com/PetitCastor/gamecapture-engine/releases) and run the self-contained
-exe, or run one from a clone (`dotnet run --project src/GameCapture.Engine`). Live capture needs
+**2. Get an engine to talk to.** Either install one from
+[Releases](https://github.com/PetitCastor/gamecapture-engine/releases) — `GameCaptureEngine-Setup.exe`,
+or `GameCapture.Engine-vX.Y.Z-win-x64.zip` for a self-contained exe at a path you control, see
+[`docs/INSTALLING.md`](docs/INSTALLING.md) — or run one from a clone
+(`dotnet run --project src/GameCapture.Engine`). Live capture needs
 Windows 10/11 with an OCR language pack. Both sides must agree on the pipe name — `pipeName` in the
 plugin's `config.json`, the engine's `%LOCALAPPDATA%\GameCapture\engine-config.json`, or `--pipe <name>` passed to both.
 
