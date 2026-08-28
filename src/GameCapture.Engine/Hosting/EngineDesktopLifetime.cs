@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows.Forms;
 using GameCapture.Engine.Metrics;
+using GameCapture.Engine.Plugins;
 using GameCapture.Engine.Tray;
 
 namespace GameCapture.Engine;
@@ -26,6 +27,8 @@ internal sealed class EngineDesktopLifetime : IDisposable
     private HotkeyListener? _hotkey;
     private MetricsReporter? _metrics;
     private TrayApplication? _tray;
+    private PluginInstaller? _pluginInstaller;
+    private PluginLauncher? _pluginLauncher;
     private bool _restartRequested;
     private bool _stopped;
     private bool _disposed;
@@ -100,6 +103,12 @@ internal sealed class EngineDesktopLifetime : IDisposable
             _config.OcrLanguage,
             Math.Clamp(_config.ScanIntervalMs, 100, 60_000));
 
+        // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
+        // headless run has nobody to click Install. Neither service touches engine-config.json, so a
+        // plugin install never takes the restart path the settings callbacks below do.
+        _pluginInstaller = new PluginInstaller(PluginPaths.DefaultRoot());
+        _pluginLauncher = new PluginLauncher();
+
         var controls = new TrayControls(
             _sourceSelection.MonitorLabels,
             _sourceSelection.CurrentMonitorIndex,
@@ -108,7 +117,8 @@ internal sealed class EngineDesktopLifetime : IDisposable
             OnSelectMonitor: index =>
                 PersistAndRestart(new Dictionary<string, object> { ["monitorIndex"] = index }),
             OnSaveSettings: settings => SaveSettings(currentSettings, settings),
-            OnExit: _shutdown.Cancel);
+            OnExit: _shutdown.Cancel,
+            Plugins: new PluginServices(_pluginInstaller, _pluginLauncher));
 
         _tray = new TrayApplication(
             _sink,
@@ -167,6 +177,11 @@ internal sealed class EngineDesktopLifetime : IDisposable
             return;
 
         _tray?.Dispose();    // remove the icon before the console summary prints
+        // After the tray, so no menu entry can start a plugin the engine is about to stop tracking.
+        // A settings change restarts the engine through this same path: plugins launched from the
+        // tray are stopped with it and are not brought back by the relaunched process.
+        _pluginLauncher?.Dispose();
+        _pluginInstaller?.Dispose();
         _metrics?.Dispose(); // stop status updates before the console summary prints
         _hotkey?.Dispose();
         _stopped = true;

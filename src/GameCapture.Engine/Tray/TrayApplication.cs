@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows.Forms;
 using GameCapture.Engine.Metrics;
+using GameCapture.Engine.Plugins;
 
 namespace GameCapture.Engine.Tray;
 
@@ -9,7 +10,9 @@ namespace GameCapture.Engine.Tray;
 /// message loop; a UI timer polls <see cref="EngineStatus"/> and the latest metrics sample, composes
 /// a <see cref="TrayView"/>, and repaints the icon, tooltip and popup. When a <see cref="TrayControls"/>
 /// is supplied the menu also offers monitor selection, a settings screen and an exit action; those
-/// callbacks are the host's, since applying any of them means persisting config and restarting.
+/// callbacks are the host's, since applying any of them means persisting config and restarting. When
+/// that record also carries <see cref="Plugins.PluginServices"/>, the menu gains the plugin manager
+/// and a launch/stop entry per installed plugin — those act immediately, with no restart.
 /// </summary>
 /// <remarks>
 /// UI/threading edge, excluded from the coverage gate. The decisions it makes about <em>what</em> to
@@ -41,7 +44,13 @@ public sealed class TrayApplication : IDisposable
     private ContextMenuStrip? _menu;
     private System.Windows.Forms.Timer? _timer;
     private TrayIconFactory? _icons;
+    private ToolStripItem? _pluginsAnchor;
+    private PluginsForm? _pluginsDialog;
     private long _lastPollTimestamp;
+
+    // The launch/stop entries currently spliced in below "Plugins…", tracked so they can be removed
+    // before each rebuild without disturbing the fixed items around them.
+    private readonly List<ToolStripItem> _pluginItems = [];
 
     // Written from the metrics timer thread, read on the UI thread. A reference assignment is atomic
     // and the tray only ever wants the most recent sample, so no lock is needed.
@@ -89,6 +98,9 @@ public sealed class TrayApplication : IDisposable
             _menu = new ContextMenuStrip();
             _menu.Items.Add("Status…", null, (_, _) => ShowPopup());
             BuildControlMenu(_menu);
+            // The installed set changes while the engine runs, but the menu is built once — so the
+            // launch/stop entries are rebuilt each time the menu opens rather than pinned here.
+            _menu.Opening += (_, _) => RebuildPluginItems();
 
             _icon = new NotifyIcon
             {
@@ -165,12 +177,81 @@ public sealed class TrayApplication : IDisposable
             };
             monitors.DropDownItems.Add(item);
         }
+        if (controls.Plugins is not null)
+            _pluginsAnchor = menu.Items.Add("Plugins…", null, (_, _) => OpenPlugins(controls.Plugins));
+
         if (monitors.HasDropDownItems)
             menu.Items.Add(monitors);
 
         menu.Items.Add("Settings…", null, (_, _) => OpenSettings(controls));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => controls.OnExit());
+    }
+
+    // Replaces the per-plugin launch/stop entries that sit directly under "Plugins…". They are
+    // top-level rather than a submenu because starting a plugin is the action a user repeats; the
+    // dialog behind "Plugins…" is the occasional one.
+    private void RebuildPluginItems()
+    {
+        if (_controls?.Plugins is not { } plugins || _menu is null || _pluginsAnchor is null)
+            return;
+
+        foreach (var item in _pluginItems)
+        {
+            _menu.Items.Remove(item);
+            item.Dispose();
+        }
+        _pluginItems.Clear();
+
+        var running = plugins.Launcher.RunningIds;
+        var index = _menu.Items.IndexOf(_pluginsAnchor) + 1;
+        foreach (var installed in plugins.Installer.State.Entries.Values.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var isRunning = running.Contains(installed.Id);
+            var entry = installed;
+            var item = new ToolStripMenuItem(isRunning ? $"Stop {entry.Name}" : $"Launch {entry.Name}");
+            item.Click += (_, _) => TogglePlugin(plugins, entry, isRunning);
+
+            _menu.Items.Insert(index++, item);
+            _pluginItems.Add(item);
+        }
+    }
+
+    private void TogglePlugin(PluginServices plugins, InstalledPlugin plugin, bool isRunning)
+    {
+        try
+        {
+            if (isRunning)
+                plugins.Launcher.Stop(plugin.Id);
+            else
+                plugins.Launcher.Start(plugin);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Could not {(isRunning ? "stop" : "start")} {plugin.Name}:\n{ex.Message}",
+                "GameCapture",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    private void OpenPlugins(PluginServices plugins)
+    {
+        using var dialog = new PluginsForm(plugins);
+        // Tracked so shutdown can close it. ShowDialog runs a nested message loop, so an engine
+        // shutdown while the manager is open would otherwise never reach Application.ExitThread: the
+        // join would time out, the host would dispose the installer and launcher under the still-open
+        // dialog, and the tray icon would linger until the user closed it by hand.
+        _pluginsDialog = dialog;
+        try
+        {
+            dialog.ShowDialog();
+        }
+        finally
+        {
+            _pluginsDialog = null;
+        }
     }
 
     private void OpenSettings(TrayControls controls)
@@ -212,7 +293,13 @@ public sealed class TrayApplication : IDisposable
         {
             try
             {
-                form.BeginInvoke((Action)Application.ExitThread);
+                form.BeginInvoke((Action)(() =>
+                {
+                    // Close the plugin manager first: its nested modal loop owns the UI thread, and
+                    // ExitThread cannot end the outer loop while that one is running.
+                    _pluginsDialog?.Close();
+                    Application.ExitThread();
+                }));
             }
             catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
             {

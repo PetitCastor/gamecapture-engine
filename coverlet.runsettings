@@ -30,6 +30,13 @@
     gated (TrayViewBuilderTests, FrameRateTrackerTests). Tray/TrayControls.cs is a callback carrier whose
     only consumers are the excluded UI-edge files, so it is excluded too; Tray/EngineSettings.cs carries
     the value-equality the no-op-save guard relies on and stays gated (EngineSettingsTests).
+  - Tray/PluginsForm.cs, Plugins/PluginInstaller.cs and Plugins/PluginLauncher.cs are the plugin
+    manager's three edges: a WinForms dialog, the one HTTP client in the engine, and child-process
+    start/stop. Everything they decide was pushed out into Plugins/PluginCatalog.cs (the trust rules),
+    Plugins/PluginArchive.cs (unpack safety), Plugins/ReleaseVersionResolver.cs, Plugins/PluginPaths.cs,
+    Plugins/PluginInstallState.cs and Plugins/PluginRowBuilder.cs, all of which are pure and stay gated.
+    That split is the point: the rules that keep a download on the plugins repository and inside the
+    plugin folder are testable without a network or a desktop.
 
   TASK-8's brief also listed Hosting/HotkeyListener.cs and Processing/OcrPipeline.cs as process-edge files
   to exclude. They are deliberately NOT excluded, because the same task moved 28 tests onto their
@@ -70,6 +77,9 @@
             **/Tray/SettingsForm.cs,
             **/Tray/TrayControls.cs,
             **/Tray/TrayIconFactory.cs,
+            **/Tray/PluginsForm.cs,
+            **/Plugins/PluginInstaller.cs,
+            **/Plugins/PluginLauncher.cs,
             **/Program.cs
           </ExcludeByFile>
         </Configuration>
