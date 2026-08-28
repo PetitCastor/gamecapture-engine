@@ -101,7 +101,12 @@ internal sealed class EngineDesktopLifetime : IDisposable
         var currentSettings = new EngineSettings(
             _config.OutputDir,
             _config.OcrLanguage,
-            Math.Clamp(_config.ScanIntervalMs, 100, 60_000));
+            Math.Clamp(_config.ScanIntervalMs, 100, 60_000),
+            _config.Hotkey,
+            _config.PipeName,
+            _config.MetricsEnabled,
+            Math.Clamp(_config.MetricsIntervalMs, 250, 60_000),
+            _config.TrayEnabled);
 
         // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
         // headless run has nobody to click Install. Neither service touches engine-config.json, so a
@@ -241,6 +246,16 @@ internal sealed class EngineDesktopLifetime : IDisposable
             changes["ocrLanguage"] = language;
         if (settings.ScanIntervalMs != currentSettings.ScanIntervalMs)
             changes["scanIntervalMs"] = settings.ScanIntervalMs;
+        if (settings.Hotkey != currentSettings.Hotkey)
+            changes["hotkey"] = settings.Hotkey;
+        if (settings.PipeName != currentSettings.PipeName)
+            changes["pipeName"] = settings.PipeName;
+        if (settings.MetricsEnabled != currentSettings.MetricsEnabled)
+            changes["metricsEnabled"] = settings.MetricsEnabled;
+        if (settings.MetricsIntervalMs != currentSettings.MetricsIntervalMs)
+            changes["metricsIntervalMs"] = settings.MetricsIntervalMs;
+        if (settings.TrayEnabled != currentSettings.TrayEnabled)
+            changes["trayEnabled"] = settings.TrayEnabled;
 
         if (changes.Count > 0)
             PersistAndRestart(changes);
