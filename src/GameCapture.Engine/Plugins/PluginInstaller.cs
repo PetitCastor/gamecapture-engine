@@ -17,6 +17,7 @@ public sealed class PluginInstaller : IDisposable
     private const int MaxRedirects = 5;
     private const string StagedArchiveName = "asset.zip";
     private const string StagedPayloadName = "payload";
+    private const string ReplacedDirectoryName = "replaced";
 
     private readonly HttpClient _http;
     private readonly string _root;
@@ -42,7 +43,7 @@ public sealed class PluginInstaller : IDisposable
     public async Task<IReadOnlyList<CatalogEntry>> FetchCatalogAsync(CancellationToken cancellationToken)
     {
         using var response = await GetFollowingRedirectsAsync(
-            new Uri(PluginCatalog.CatalogUrl), static uri => PluginCatalog.IsCatalogUrl(uri.ToString()), cancellationToken);
+            new Uri(PluginCatalog.CatalogUrl), PluginCatalog.IsCatalogUri, cancellationToken);
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!PluginCatalog.TryParse(json, out var entries, out var error))
@@ -74,7 +75,7 @@ public sealed class PluginInstaller : IDisposable
                 return "";
 
             uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
-            if (!PluginCatalog.IsTrustedAssetUri(uri))
+            if (!PluginCatalog.IsTrustedRedirectTarget(uri))
                 return "";
         }
 
@@ -83,7 +84,9 @@ public sealed class PluginInstaller : IDisposable
 
     /// <summary>
     /// Installs or reinstalls a plugin: download to a staging folder, unpack, then swap into place.
-    /// A failure anywhere before the swap leaves any existing install untouched.
+    /// Any existing install is moved aside rather than deleted, and put back if the swap fails — so a
+    /// plugin whose files are locked (it is still running, a scanner has the exe open) leaves the
+    /// working copy in place instead of losing it between the delete and the move.
     /// </summary>
     /// <param name="entry">Catalog entry to install.</param>
     /// <param name="progress">Percent complete of the download, when the server reports a length.</param>
@@ -113,10 +116,8 @@ public sealed class PluginInstaller : IDisposable
             await using (var archive = File.OpenRead(archivePath))
                 executable = PluginArchive.Extract(archive, payload);
 
-            if (Directory.Exists(destination))
-                Directory.Delete(destination, recursive: true);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            Directory.Move(payload, destination);
+            SwapIntoPlace(payload, destination, Path.Combine(staging, ReplacedDirectoryName));
 
             var installed = new InstalledPlugin(
                 entry.Id,
@@ -151,9 +152,31 @@ public sealed class PluginInstaller : IDisposable
 
     public void Dispose() => _http.Dispose();
 
+    // Replaces an existing install without ever being in a state where neither copy is there: the old
+    // folder moves aside first, and if putting the new one in its place fails, it moves back. Both
+    // moves are same-volume renames, so the window where either could fail is as small as the
+    // filesystem allows.
+    private static void SwapIntoPlace(string payload, string destination, string replaced)
+    {
+        var hadExisting = Directory.Exists(destination);
+        if (hadExisting)
+            Directory.Move(destination, replaced);
+
+        try
+        {
+            Directory.Move(payload, destination);
+        }
+        catch
+        {
+            if (hadExisting && !Directory.Exists(destination))
+                Directory.Move(replaced, destination);
+            throw;
+        }
+    }
+
     private async Task DownloadAsync(Uri uri, string path, IProgress<int>? progress, CancellationToken cancellationToken)
     {
-        using var response = await GetFollowingRedirectsAsync(uri, PluginCatalog.IsTrustedAssetUri, cancellationToken);
+        using var response = await GetFollowingRedirectsAsync(uri, PluginCatalog.IsTrustedRedirectTarget, cancellationToken);
 
         var total = response.Content.Headers.ContentLength;
         await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);

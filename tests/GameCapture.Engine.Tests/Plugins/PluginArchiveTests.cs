@@ -72,6 +72,41 @@ public class PluginArchiveTests : IDisposable
         Assert.False(File.Exists(Path.Combine(_root, "escaped.exe")));
     }
 
+    [Theory]
+    [InlineData(@"..\escaped.exe")]
+    [InlineData("nested/../../escaped.exe")]
+    [InlineData(@"C:\escaped.exe")]
+    [InlineData("/escaped.exe")]
+    public void OtherTraversalShapes_AreRejectedToo(string name)
+    {
+        using var zip = Zip((name, "binary"));
+
+        Assert.Throws<InvalidDataException>(() => PluginArchive.Extract(zip, Path.Combine(_root, "mission-plugin")));
+    }
+
+    [Fact]
+    public void EntryThatUnpacksToMoreThanItDeclares_IsStopped()
+    {
+        // The declared uncompressed size is the archive's own claim about itself. Extracting on the
+        // strength of it would let a highly compressible entry that reports a few bytes write until
+        // the disk fills, so the write is what has to be bounded.
+        using var buffer = new MemoryStream();
+        using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var entry = archive.CreateEntry("MissionPlugin.exe");
+            using var stream = entry.Open();
+            var block = new byte[1024 * 1024];
+            for (var i = 0; i < 8; i++)
+                stream.Write(block);
+        }
+        buffer.Position = 0;
+
+        var ex = Assert.Throws<InvalidDataException>(
+            () => PluginArchive.Extract(buffer, Path.Combine(_root, "mission-plugin"), maxTotalBytes: 4 * 1024 * 1024));
+
+        Assert.Contains("declares", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void SecondExecutable_IsRejected()
     {

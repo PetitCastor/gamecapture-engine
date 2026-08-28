@@ -45,6 +45,7 @@ public sealed class TrayApplication : IDisposable
     private System.Windows.Forms.Timer? _timer;
     private TrayIconFactory? _icons;
     private ToolStripItem? _pluginsAnchor;
+    private PluginsForm? _pluginsDialog;
     private long _lastPollTimestamp;
 
     // The launch/stop entries currently spliced in below "Plugins…", tracked so they can be removed
@@ -238,7 +239,19 @@ public sealed class TrayApplication : IDisposable
     private void OpenPlugins(PluginServices plugins)
     {
         using var dialog = new PluginsForm(plugins);
-        dialog.ShowDialog();
+        // Tracked so shutdown can close it. ShowDialog runs a nested message loop, so an engine
+        // shutdown while the manager is open would otherwise never reach Application.ExitThread: the
+        // join would time out, the host would dispose the installer and launcher under the still-open
+        // dialog, and the tray icon would linger until the user closed it by hand.
+        _pluginsDialog = dialog;
+        try
+        {
+            dialog.ShowDialog();
+        }
+        finally
+        {
+            _pluginsDialog = null;
+        }
     }
 
     private void OpenSettings(TrayControls controls)
@@ -280,7 +293,13 @@ public sealed class TrayApplication : IDisposable
         {
             try
             {
-                form.BeginInvoke((Action)Application.ExitThread);
+                form.BeginInvoke((Action)(() =>
+                {
+                    // Close the plugin manager first: its nested modal loop owns the UI thread, and
+                    // ExitThread cannot end the outer loop while that one is running.
+                    _pluginsDialog?.Close();
+                    Application.ExitThread();
+                }));
             }
             catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
             {

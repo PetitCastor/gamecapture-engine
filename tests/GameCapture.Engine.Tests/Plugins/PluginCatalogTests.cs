@@ -61,9 +61,7 @@ public class PluginCatalogTests
     [Theory]
     [InlineData("https://github.com/PetitCastor/gamecapture-plugins/releases/latest/download/A.zip")]
     [InlineData("https://github.com/PetitCastor/gamecapture-plugins/releases/download/v1.0.4/A.zip")]
-    [InlineData("https://objects.githubusercontent.com/github-production-release-asset/1/2?token=abc")]
-    [InlineData("https://release-assets.githubusercontent.com/github-production-release-asset/1/2")]
-    public void IsTrustedAssetUrl_AcceptsThePluginsRepositoryAndItsContentHosts(string url)
+    public void IsTrustedAssetUrl_AcceptsThePluginsRepositoryReleases(string url)
         => Assert.True(PluginCatalog.IsTrustedAssetUrl(url));
 
     [Theory]
@@ -73,6 +71,12 @@ public class PluginCatalogTests
     [InlineData("https://github.com/attacker/PetitCastor/gamecapture-plugins/releases/A.zip")]
     // Host that merely ends with an allowed one.
     [InlineData("https://evilgithub.com/PetitCastor/gamecapture-plugins/releases/latest/download/A.zip")]
+    // Allowed host in the userinfo of someone else's.
+    [InlineData("https://github.com@evil.example/PetitCastor/gamecapture-plugins/releases/A.zip")]
+    // Trailing-dot spelling of the same host.
+    [InlineData("https://github.com./PetitCastor/gamecapture-plugins/releases/latest/download/A.zip")]
+    // Non-default port.
+    [InlineData("https://github.com:8443/PetitCastor/gamecapture-plugins/releases/latest/download/A.zip")]
     // Plaintext transport.
     [InlineData("http://github.com/PetitCastor/gamecapture-plugins/releases/latest/download/A.zip")]
     // Non-release path on the right repository.
@@ -80,6 +84,32 @@ public class PluginCatalogTests
     [InlineData("not a url")]
     public void IsTrustedAssetUrl_RejectsEverythingElse(string url)
         => Assert.False(PluginCatalog.IsTrustedAssetUrl(url));
+
+    [Fact]
+    public void ContentHosts_AreRedirectTargetsOnlyAndNeverAStartingPoint()
+    {
+        // Their paths are signed blobs with no repository identity in them, so accepting one straight
+        // out of the catalog would accept any file on any repository. Reaching them has to require
+        // having followed a release URL that was path-checked first.
+        const string blob = "https://objects.githubusercontent.com/github-production-release-asset/1/2?token=abc";
+
+        Assert.False(PluginCatalog.IsTrustedAssetUrl(blob));
+        Assert.True(PluginCatalog.IsTrustedRedirectTarget(new Uri(blob)));
+        Assert.True(PluginCatalog.IsTrustedRedirectTarget(
+            new Uri("https://release-assets.githubusercontent.com/github-production-release-asset/1/2")));
+    }
+
+    [Theory]
+    [InlineData("https://attacker.example/evil.zip")]
+    [InlineData("http://objects.githubusercontent.com/1/2")]
+    [InlineData("https://evil-objects.githubusercontent.com/1/2")]
+    public void IsTrustedRedirectTarget_StillRefusesAnythingOffTheAllowlist(string url)
+        => Assert.False(PluginCatalog.IsTrustedRedirectTarget(new Uri(url)));
+
+    [Fact]
+    public void ARedirectMayStillLandOnAnotherReleaseUrl()
+        => Assert.True(PluginCatalog.IsTrustedRedirectTarget(
+            new Uri("https://github.com/PetitCastor/gamecapture-plugins/releases/download/v1.0.4/A.zip")));
 
     [Fact]
     public void IsCatalogUrl_AcceptsOnlyThePluginsRepositoryRawPath()

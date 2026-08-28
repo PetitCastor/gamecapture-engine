@@ -12,6 +12,12 @@ namespace GameCapture.Engine.Plugins;
 /// URL — including each redirect hop the download follows — must resolve to the plugins repository's
 /// own releases. A catalog that has been tampered with can therefore rename or re-describe a plugin,
 /// but it cannot point the engine at a binary hosted anywhere else.
+///
+/// That last guarantee is why a catalog URL and a redirect target are checked by two different
+/// methods. GitHub serves release bytes from content hosts whose paths are opaque signed blobs
+/// carrying no repository identity, so there is nothing on them to check — accepting one straight
+/// out of the catalog would accept any file on any repository. They are therefore reachable only as
+/// the target of a redirect from a URL that already passed the strict, path-checked rule.
 /// </remarks>
 public static class PluginCatalog
 {
@@ -26,18 +32,18 @@ public static class PluginCatalog
     private const string CatalogHost = "raw.githubusercontent.com";
     private const string CatalogPathPrefix = "/PetitCastor/gamecapture-plugins/";
 
+    private const string ReleaseHost = "github.com";
+
     /// <summary>Release assets live under this path on <c>github.com</c>.</summary>
     private const string ReleasePathPrefix = "/PetitCastor/gamecapture-plugins/releases/";
 
     /// <summary>
-    /// Hosts a release download may legitimately touch. <c>github.com</c> issues the redirect and is
-    /// path-checked; the two content hosts serve the signed, opaque blob URLs that redirect lands on,
-    /// whose paths carry no repository identity to check — reaching them at all requires having
-    /// followed a validated <c>github.com</c> release URL first.
+    /// Content hosts a validated release URL is allowed to redirect to. Their paths are signed blob
+    /// references with no repository identity in them, so they are accepted as a redirect target and
+    /// never as a starting point.
     /// </summary>
-    private static readonly string[] AssetHosts =
+    private static readonly string[] RedirectOnlyHosts =
     [
-        "github.com",
         "objects.githubusercontent.com",
         "release-assets.githubusercontent.com",
     ];
@@ -88,31 +94,39 @@ public static class PluginCatalog
     /// <summary>Whether <paramref name="url"/> is the catalog document itself.</summary>
     public static bool IsCatalogUrl(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-           && uri.Scheme == Uri.UriSchemeHttps
-           && string.Equals(uri.Host, CatalogHost, StringComparison.OrdinalIgnoreCase)
+           && IsOn(uri, CatalogHost)
            && uri.AbsolutePath.StartsWith(CatalogPathPrefix, StringComparison.Ordinal);
 
+    /// <inheritdoc cref="IsCatalogUrl(string)"/>
+    public static bool IsCatalogUri(Uri uri) => IsCatalogUrl(uri.AbsoluteUri);
+
     /// <summary>
-    /// Whether a release asset may be downloaded from <paramref name="url"/>. Applied to the catalog's
-    /// own <c>downloadUrl</c> and again to every redirect the download follows.
+    /// Whether a download may <em>start</em> at <paramref name="url"/>. This is the rule applied to a
+    /// catalog entry's <c>downloadUrl</c>: the plugins repository's own releases on <c>github.com</c>
+    /// and nothing else.
     /// </summary>
     public static bool IsTrustedAssetUrl(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsTrustedAssetUri(uri);
 
     /// <inheritdoc cref="IsTrustedAssetUrl(string)"/>
     public static bool IsTrustedAssetUri(Uri uri)
-    {
-        if (uri.Scheme != Uri.UriSchemeHttps)
-            return false;
+        => IsOn(uri, ReleaseHost) && uri.AbsolutePath.StartsWith(ReleasePathPrefix, StringComparison.Ordinal);
 
-        if (!AssetHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase))
-            return false;
+    /// <summary>
+    /// Whether a download already under way may follow a redirect to <paramref name="uri"/>: either
+    /// another release URL, or one of the content hosts GitHub serves release bytes from. Only ever
+    /// reached from a URL that passed <see cref="IsTrustedAssetUri"/> first.
+    /// </summary>
+    public static bool IsTrustedRedirectTarget(Uri uri)
+        => IsTrustedAssetUri(uri) || RedirectOnlyHosts.Any(host => IsOn(uri, host));
 
-        // Only github.com carries a checkable repository path. The content hosts are reachable solely
-        // by following a redirect that already passed this check.
-        return !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
-               || uri.AbsolutePath.StartsWith(ReleasePathPrefix, StringComparison.Ordinal);
-    }
+    // Host comparison is exact and case-insensitive against Uri.Host, which is already punycode for
+    // an IDN and excludes any userinfo, so "github.com@evil.example" and a unicode look-alike both
+    // fail here. The default-port requirement keeps a non-standard listener off the allowlist.
+    private static bool IsOn(Uri uri, string host)
+        => uri.Scheme == Uri.UriSchemeHttps
+           && uri.IsDefaultPort
+           && string.Equals(uri.Host, host, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Whether a catalog id is safe to use as a directory name. Restrictive on purpose: the id comes

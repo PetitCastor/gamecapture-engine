@@ -31,11 +31,14 @@ public sealed class PluginsForm : Form
     private readonly ProgressBar _progress;
     private readonly Label _status;
 
-    private IReadOnlyList<CatalogEntry> _catalog = [];
     private readonly Dictionary<string, string> _latestVersions = new(StringComparer.Ordinal);
+    private readonly CancellationTokenSource _work = new();
+
+    private IReadOnlyList<CatalogEntry> _catalog = [];
     private IReadOnlyList<PluginRow> _rows = [];
     private bool _busy;
     private bool _sourceConfirmed;
+    private bool _closePending;
 
     public PluginsForm(PluginServices services)
     {
@@ -114,6 +117,35 @@ public sealed class PluginsForm : Form
         Load += async (_, _) => await LoadCatalogAsync();
     }
 
+    /// <summary>
+    /// Holds the dialog open until in-flight work unwinds. The title-bar close and Alt+F4 cannot be
+    /// disabled the way the Close button can, and letting one through mid-download would dispose the
+    /// form under an awaiting handler — whose continuation would then touch disposed controls on the
+    /// tray's message loop. Cancelling and closing on the way out is the same thing from the user's
+    /// side, minus that exception.
+    /// </summary>
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (_busy)
+        {
+            _closePending = true;
+            _work.Cancel();
+            e.Cancel = true;
+            Report("Finishing up…", error: false);
+            return;
+        }
+
+        base.OnFormClosing(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _work.Dispose();
+
+        base.Dispose(disposing);
+    }
+
     private Button MakeButton(string text, Func<PluginRow, Task> action)
     {
         var button = new Button { Text = text, AutoSize = true, Enabled = false, Margin = new Padding(3) };
@@ -127,17 +159,34 @@ public sealed class PluginsForm : Form
                 SetBusy(true);
                 await action(row);
             }
+            catch (OperationCanceledException)
+            {
+                Report("Cancelled.", error: false);
+            }
             catch (Exception ex)
             {
                 Report(ex.Message, error: true);
             }
             finally
             {
-                SetBusy(false);
-                Rebuild();
+                Finish();
             }
         };
         return button;
+    }
+
+    // Single exit path for every awaiting handler: drop the busy state, repaint, and honour a close
+    // the user asked for while the work was still running.
+    private void Finish()
+    {
+        if (IsDisposed || Disposing)
+            return;
+
+        SetBusy(false);
+        Rebuild();
+
+        if (_closePending)
+            Close();
     }
 
     private async Task LoadCatalogAsync()
@@ -145,7 +194,7 @@ public sealed class PluginsForm : Form
         try
         {
             SetBusy(true);
-            _catalog = await _services.Installer.FetchCatalogAsync(CancellationToken.None);
+            _catalog = await _services.Installer.FetchCatalogAsync(_work.Token);
             Rebuild();
 
             // Version probes are one HEAD each and only decide whether a row says "Update available",
@@ -153,13 +202,14 @@ public sealed class PluginsForm : Form
             Report("Checking for updates…", error: false);
             foreach (var entry in _catalog)
             {
+                _work.Token.ThrowIfCancellationRequested();
                 try
                 {
-                    var version = await _services.Installer.ResolveLatestVersionAsync(entry, CancellationToken.None);
+                    var version = await _services.Installer.ResolveLatestVersionAsync(entry, _work.Token);
                     if (version.Length > 0)
                         _latestVersions[entry.Id] = version;
                 }
-                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+                catch (HttpRequestException)
                 {
                     // Leave this row without update information.
                 }
@@ -167,14 +217,17 @@ public sealed class PluginsForm : Form
 
             Report($"{_catalog.Count} plugin(s) in the catalog.", error: false);
         }
+        catch (OperationCanceledException)
+        {
+            Report("Cancelled.", error: false);
+        }
         catch (Exception ex)
         {
             Report($"Could not load the catalog: {ex.Message}", error: true);
         }
         finally
         {
-            SetBusy(false);
-            Rebuild();
+            Finish();
         }
     }
 
@@ -188,7 +241,7 @@ public sealed class PluginsForm : Form
         Report($"Downloading {row.Name}…", error: false);
 
         var progress = new Progress<int>(percent => _progress.Value = Math.Clamp(percent, 0, 100));
-        var installed = await _services.Installer.InstallAsync(row.Entry, progress, CancellationToken.None);
+        var installed = await _services.Installer.InstallAsync(row.Entry, progress, _work.Token);
 
         _progress.Visible = false;
         Report($"{installed.Name} {installed.Version} installed. Use Launch to start it.", error: false);
