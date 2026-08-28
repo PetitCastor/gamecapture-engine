@@ -1,4 +1,14 @@
 using GameCapture.Engine;
+using Velopack;
+
+// Ahead of every other statement, including the console allocation below, because this is not
+// normal startup: the Velopack Setup.exe re-invokes this same executable with hook arguments
+// (--veloapp-install, --veloapp-updated, --veloapp-uninstall) during install and update, and Run()
+// services those and exits the process. The arg parsing further down matches only flags it knows
+// and ignores the rest, so without this line a hook invocation would fall through into a full
+// engine start — tray icon, gRPC listener — and never exit, leaving Setup blocked on its hook
+// timeout with a stray engine running. Run() is a no-op on an ordinary user launch.
+VelopackApp.Build().Run();
 
 ConsoleWindowVisibility.EnsureDebugConsole();
 

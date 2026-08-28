@@ -39,6 +39,10 @@
 
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
+    <!-- Installer/update runtime for the Velopack Setup.exe cut by release.yml. Pinned to the same
+         version as the `vpk` local tool in .config/dotnet-tools.json: Velopack warns at pack time
+         when the CLI and the SDK disagree, so the two move together or not at all. -->
+    <PackageReference Include="Velopack" Version="1.2.0" />
     <!-- System.Diagnostics.PerformanceCounter (used by Metrics/MetricsSampler) is provided by the
          Windows Desktop framework that UseWindowsForms pulls in, so an explicit reference now trips
          NU1510 (redundant, un-prunable). The MetricsSampler types resolve from that framework. -->
