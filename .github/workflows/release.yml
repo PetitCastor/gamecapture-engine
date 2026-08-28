@@ -137,7 +137,7 @@ jobs:
             --noPortable `
             --outputDir releases
           $expected = @(
-            "releases/GameCaptureEngine-Setup.exe"
+            "releases/GameCaptureEngine-win-Setup.exe"
             "releases/releases.win.json"
             "releases/GameCaptureEngine-${env:RELEASE_VERSION}-full.nupkg"
           )
@@ -164,7 +164,7 @@ jobs:
         run: |
           gh release create "${env:RELEASE_TAG}" `
             "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip" `
-            "releases/GameCaptureEngine-Setup.exe" `
+            "releases/GameCaptureEngine-win-Setup.exe" `
             "releases/releases.win.json" `
             "releases/GameCaptureEngine-${env:RELEASE_VERSION}-full.nupkg" `
             --title "${env:RELEASE_TAG}" --generate-notes --target "${{ github.sha }}"
