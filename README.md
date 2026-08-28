@@ -19,6 +19,10 @@ does not read game memory, modify game files, or inspect network traffic.
 The engine and plugins are separate processes. The engine owns capture and OCR; plugins use the SDK
 and communicate with it through a local named pipe.
 
+Published plugins are installed from the tray icon's **Plugins…** menu, which downloads them from
+the [gamecapture-plugins](https://github.com/PetitCastor/gamecapture-plugins) releases and launches
+them on request. See [Installing](docs/INSTALLING.md) for what that stores and what it will refuse.
+
 ## Create a plugin
 
 You do not need to clone this repository to write a plugin. Install the template, create a project,

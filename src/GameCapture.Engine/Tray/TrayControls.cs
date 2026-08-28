@@ -1,3 +1,5 @@
+using GameCapture.Engine.Plugins;
+
 namespace GameCapture.Engine.Tray;
 
 /// <summary>
@@ -5,6 +7,8 @@ namespace GameCapture.Engine.Tray;
 /// of engine internals. The three callbacks run on the tray's UI thread; the host is responsible for
 /// their side effects — persisting to <c>engine-config.json</c> and, for a monitor/settings change,
 /// restarting the process so the new value takes effect (every field below is bound at startup).
+/// Plugin management is the exception to that last part: installing or launching a plugin changes
+/// nothing the engine bound at startup, so it applies immediately and never restarts anything.
 /// </summary>
 /// <param name="MonitorLabels">Display strings for each monitor, in the same order as the engine's
 /// monitor list, so the selected index maps straight to <see cref="EngineConfig.MonitorIndex"/>.</param>
@@ -14,6 +18,8 @@ namespace GameCapture.Engine.Tray;
 /// <param name="OnSelectMonitor">Invoked with the chosen monitor index.</param>
 /// <param name="OnSaveSettings">Invoked with the edited settings when the screen is confirmed.</param>
 /// <param name="OnExit">Invoked to shut the engine down.</param>
+/// <param name="Plugins">Catalog/install/launch services behind the plugin manager, or <c>null</c>
+/// to leave the plugin entries out of the menu entirely.</param>
 public sealed record TrayControls(
     IReadOnlyList<string> MonitorLabels,
     int CurrentMonitorIndex,
@@ -21,4 +27,5 @@ public sealed record TrayControls(
     IReadOnlyList<string> AvailableOcrLanguages,
     Action<int> OnSelectMonitor,
     Action<EngineSettings> OnSaveSettings,
-    Action OnExit);
+    Action OnExit,
+    PluginServices? Plugins = null);
