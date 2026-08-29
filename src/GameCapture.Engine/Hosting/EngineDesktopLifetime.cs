@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Windows.Forms;
 using GameCapture.Engine.Metrics;
 using GameCapture.Engine.Plugins;
@@ -249,6 +251,14 @@ internal sealed class EngineDesktopLifetime : IDisposable
             hotkey = currentSettings.Hotkey;
         }
 
+        // Same failure mode as the hotkey: an unusable pipe name would make EngineHost.StartAsync
+        // throw before the tray exists (see Program.cs), leaving no UI path back in. Only probe when
+        // it actually changed — the current name is already bound by this running engine, so testing
+        // it here would always collide with our own listener.
+        var pipeName = settings.PipeName;
+        if (pipeName != currentSettings.PipeName && !IsUsablePipeName(pipeName))
+            pipeName = currentSettings.PipeName;
+
         // Patch only changed fields. Reserializing the loaded config would bake a relative outputDir
         // into the absolute path resolved in memory.
         var changes = new Dictionary<string, object>();
@@ -260,8 +270,8 @@ internal sealed class EngineDesktopLifetime : IDisposable
             changes["scanIntervalMs"] = settings.ScanIntervalMs;
         if (hotkey != currentSettings.Hotkey)
             changes["hotkey"] = hotkey;
-        if (settings.PipeName != currentSettings.PipeName)
-            changes["pipeName"] = settings.PipeName;
+        if (pipeName != currentSettings.PipeName)
+            changes["pipeName"] = pipeName;
         if (settings.MetricsEnabled != currentSettings.MetricsEnabled)
             changes["metricsEnabled"] = settings.MetricsEnabled;
         if (settings.MetricsIntervalMs != currentSettings.MetricsIntervalMs)
@@ -271,6 +281,25 @@ internal sealed class EngineDesktopLifetime : IDisposable
 
         if (changes.Count > 0)
             PersistAndRestart(changes);
+    }
+
+    // Probes usability the same way the OS ultimately will: by actually creating and immediately
+    // disposing a server instance under that name, rather than reimplementing Windows' named-pipe
+    // naming rules. Blank is rejected without probing since it always falls back to a config-file
+    // path (Program.cs) rather than throwing from the pipe API.
+    private static bool IsUsablePipeName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+        try
+        {
+            using var probe = new NamedPipeServerStream(name, PipeDirection.InOut, 1);
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            return false;
+        }
     }
 
     private void PersistAndRestart(IReadOnlyDictionary<string, object> changes)

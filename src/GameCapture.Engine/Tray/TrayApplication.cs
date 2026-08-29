@@ -51,6 +51,14 @@ public sealed class TrayApplication : IDisposable
     private PluginsForm? _pluginsDialog;
     private long _lastPollTimestamp;
 
+    // Captured once at startup rather than read live from Debugger.IsAttached on every poll tick: the
+    // "Status…" menu item is only ever added once, at menu-build time, so whether the popup behind it
+    // gets kept up to date must follow that same one-time decision. A live re-read would drift out of
+    // sync the moment a debugger attaches or detaches from an already-running tray — either leaving a
+    // frozen, stale popup reachable after a detach, or resuming pointless formatting work after an
+    // attach with no menu entry to show it.
+    private bool _statusEnabled;
+
     // The launch/stop entries currently spliced in below "Plugins…", tracked so they can be removed
     // before each rebuild without disturbing the fixed items around them.
     private readonly List<ToolStripItem> _pluginItems = [];
@@ -99,10 +107,12 @@ public sealed class TrayApplication : IDisposable
             // NotifyIcon would linger as a ghost in the tray.
             _ = _form.Handle;
 
+            _statusEnabled = Debugger.IsAttached;
+
             _menu = new ContextMenuStrip();
             // Debug-only convenience: never shown outside a Visual Studio debug session, and only ever
             // reached from this menu entry — left-clicking the icon does not pop it up.
-            if (Debugger.IsAttached)
+            if (_statusEnabled)
                 _menu.Items.Add("Status…", null, (_, _) => ShowPopup());
             BuildControlMenu(_menu);
             // The installed set changes while the engine runs, but the menu is built once — so the
@@ -276,9 +286,9 @@ public sealed class TrayApplication : IDisposable
             _icon!.Icon = _icons!.For(view.IconState);
             _icon.Text = view.Tooltip;
             // The popup behind this can only ever be reached via the debug-gated "Status…" menu item,
-            // so formatting its contents when no debugger is attached would be pure wasted work on
+            // so formatting its contents when that item isn't in the menu would be pure wasted work on
             // every poll tick for the life of the process.
-            if (Debugger.IsAttached)
+            if (_statusEnabled)
                 _form!.Update(view);
         }
         catch (Exception ex)
