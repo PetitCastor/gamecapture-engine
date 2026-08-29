@@ -275,7 +275,11 @@ public sealed class TrayApplication : IDisposable
             var view = TrayViewBuilder.Build(snapshot, _latestMetrics, _fps.Fps, _metricsEnabled);
             _icon!.Icon = _icons!.For(view.IconState);
             _icon.Text = view.Tooltip;
-            _form!.Update(view);
+            // The popup behind this can only ever be reached via the debug-gated "Status…" menu item,
+            // so formatting its contents when no debugger is attached would be pure wasted work on
+            // every poll tick for the life of the process.
+            if (Debugger.IsAttached)
+                _form!.Update(view);
         }
         catch (Exception ex)
         {
