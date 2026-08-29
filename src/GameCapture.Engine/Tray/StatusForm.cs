@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace GameCapture.Engine.Tray;
 
 /// <summary>
-/// The small read-only popup shown on a left-click of the tray icon: engine mode, frame size, OCR
+/// The small read-only popup behind the debug-only "Status…" menu item: engine mode, frame size, OCR
 /// language, scanned FPS, process metrics, and the connected-plugin list. A tool window that hides
 /// itself as soon as it loses focus, so it behaves like a menu rather than a window to manage.
 /// </summary>

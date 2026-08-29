@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Pipes;
 using System.Windows.Forms;
 using GameCapture.Engine.Metrics;
 using GameCapture.Engine.Plugins;
@@ -101,7 +103,12 @@ internal sealed class EngineDesktopLifetime : IDisposable
         var currentSettings = new EngineSettings(
             _config.OutputDir,
             _config.OcrLanguage,
-            Math.Clamp(_config.ScanIntervalMs, 100, 60_000));
+            Math.Clamp(_config.ScanIntervalMs, 100, 60_000),
+            _config.Hotkey,
+            _config.PipeName,
+            _config.MetricsEnabled,
+            Math.Clamp(_config.MetricsIntervalMs, 250, 60_000),
+            _config.TrayEnabled);
 
         // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
         // headless run has nobody to click Install. Neither service touches engine-config.json, so a
@@ -232,6 +239,26 @@ internal sealed class EngineDesktopLifetime : IDisposable
             language = "";
         }
 
+        // An unparseable hotkey would make the relaunched process exit before the tray exists (see
+        // InitializeHotkey); retain the previous, already-valid hotkey instead of persisting garbage.
+        var hotkey = settings.Hotkey;
+        try
+        {
+            HotkeyListener.ParseHotkey(hotkey);
+        }
+        catch (FormatException)
+        {
+            hotkey = currentSettings.Hotkey;
+        }
+
+        // Same failure mode as the hotkey: an unusable pipe name would make EngineHost.StartAsync
+        // throw before the tray exists (see Program.cs), leaving no UI path back in. Only probe when
+        // it actually changed — the current name is already bound by this running engine, so testing
+        // it here would always collide with our own listener.
+        var pipeName = settings.PipeName;
+        if (pipeName != currentSettings.PipeName && !IsUsablePipeName(pipeName))
+            pipeName = currentSettings.PipeName;
+
         // Patch only changed fields. Reserializing the loaded config would bake a relative outputDir
         // into the absolute path resolved in memory.
         var changes = new Dictionary<string, object>();
@@ -241,9 +268,38 @@ internal sealed class EngineDesktopLifetime : IDisposable
             changes["ocrLanguage"] = language;
         if (settings.ScanIntervalMs != currentSettings.ScanIntervalMs)
             changes["scanIntervalMs"] = settings.ScanIntervalMs;
+        if (hotkey != currentSettings.Hotkey)
+            changes["hotkey"] = hotkey;
+        if (pipeName != currentSettings.PipeName)
+            changes["pipeName"] = pipeName;
+        if (settings.MetricsEnabled != currentSettings.MetricsEnabled)
+            changes["metricsEnabled"] = settings.MetricsEnabled;
+        if (settings.MetricsIntervalMs != currentSettings.MetricsIntervalMs)
+            changes["metricsIntervalMs"] = settings.MetricsIntervalMs;
+        if (settings.TrayEnabled != currentSettings.TrayEnabled)
+            changes["trayEnabled"] = settings.TrayEnabled;
 
         if (changes.Count > 0)
             PersistAndRestart(changes);
+    }
+
+    // Probes usability the same way the OS ultimately will: by actually creating and immediately
+    // disposing a server instance under that name, rather than reimplementing Windows' named-pipe
+    // naming rules. Blank is rejected without probing since it always falls back to a config-file
+    // path (Program.cs) rather than throwing from the pipe API.
+    private static bool IsUsablePipeName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+        try
+        {
+            using var probe = new NamedPipeServerStream(name, PipeDirection.InOut, 1);
+            return true;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            return false;
+        }
     }
 
     private void PersistAndRestart(IReadOnlyDictionary<string, object> changes)

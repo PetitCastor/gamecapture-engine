@@ -16,8 +16,8 @@ public static class ConfigPatch
 
     /// <summary>
     /// Returns <paramref name="json"/> with each <paramref name="changes"/> entry applied by camelCase
-    /// property name. Values must be <see cref="string"/> or <see cref="int"/>. A key not already present
-    /// is added; every other property is preserved untouched.
+    /// property name. Values must be <see cref="string"/>, <see cref="int"/> or <see cref="bool"/>. A key
+    /// not already present is added; every other property is preserved untouched.
     /// </summary>
     public static string Apply(string json, IReadOnlyDictionary<string, object> changes)
     {
@@ -34,6 +34,7 @@ public static class ConfigPatch
             {
                 string s => JsonValue.Create(s),
                 int i => JsonValue.Create(i),
+                bool b => JsonValue.Create(b),
                 _ => throw new ArgumentException($"Unsupported config value type for '{key}': {value.GetType()}"),
             };
         }

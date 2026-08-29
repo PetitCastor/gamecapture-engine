@@ -7,11 +7,11 @@ namespace GameCapture.Engine;
 /// </summary>
 public static class EngineRelaunch
 {
-    // Flags that carry a value and shadow a tray-editable config field. Both are "<flag> <value>"
-    // pairs, so each match removes two tokens. Every other flag (--verbose, --save-frames, --pipe,
-    // the --video/--replay batch knobs) is preserved verbatim — a relaunch is the same run, minus
-    // only the overrides the operator has now superseded from the tray.
-    private static readonly string[] ValuedOverrides = ["--monitor", "--ocr-lang"];
+    // Flags that carry a value and shadow a tray-editable config field. Each is a "<flag> <value>"
+    // pair, so a match removes two tokens. Every other flag (--verbose, --save-frames, the
+    // --video/--replay batch knobs) is preserved verbatim — a relaunch is the same run, minus only
+    // the overrides the operator has now superseded from the tray.
+    private static readonly string[] ValuedOverrides = ["--monitor", "--ocr-lang", "--pipe"];
 
     /// <summary>
     /// Whether <paramref name="processPath"/> (typically <see cref="Environment.ProcessPath"/>) is the
@@ -24,8 +24,9 @@ public static class EngineRelaunch
            && !string.Equals(Path.GetFileNameWithoutExtension(processPath), "dotnet", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Returns <paramref name="args"/> with the <c>--monitor</c> / <c>--ocr-lang</c> override pairs
-    /// stripped, so a freshly-persisted config value is not immediately re-overridden on restart.
+    /// Returns <paramref name="args"/> with the <c>--monitor</c> / <c>--ocr-lang</c> / <c>--pipe</c>
+    /// override pairs stripped, so a freshly-persisted config value is not immediately re-overridden
+    /// on restart.
     /// </summary>
     public static string[] StripPersistedOverrides(IReadOnlyList<string> args)
     {

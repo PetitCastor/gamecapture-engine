@@ -8,11 +8,14 @@ namespace GameCapture.Engine.Tray;
 /// <summary>
 /// Hosts the Windows tray icon inside the engine process. Runs its own STA thread with a WinForms
 /// message loop; a UI timer polls <see cref="EngineStatus"/> and the latest metrics sample, composes
-/// a <see cref="TrayView"/>, and repaints the icon, tooltip and popup. When a <see cref="TrayControls"/>
-/// is supplied the menu also offers monitor selection, a settings screen and an exit action; those
-/// callbacks are the host's, since applying any of them means persisting config and restarting. When
-/// that record also carries <see cref="Plugins.PluginServices"/>, the menu gains the plugin manager
-/// and a launch/stop entry per installed plugin — those act immediately, with no restart.
+/// a <see cref="TrayView"/>, and repaints the icon and tooltip. Left-clicking the icon never pops
+/// anything up. The right-click context menu carries a "Status…" popup entry, but only when a Visual
+/// Studio debugger is attached to the process — it is absent for a normal player-facing launch. When a
+/// <see cref="TrayControls"/> is supplied the menu also offers monitor selection, a settings screen and
+/// an exit action (always present, debugger or not); those callbacks are the host's, since applying any
+/// of them means persisting config and restarting. When that record also carries
+/// <see cref="Plugins.PluginServices"/>, the menu gains the plugin manager and a launch/stop entry per
+/// installed plugin — those act immediately, with no restart.
 /// </summary>
 /// <remarks>
 /// UI/threading edge, excluded from the coverage gate. The decisions it makes about <em>what</em> to
@@ -47,6 +50,14 @@ public sealed class TrayApplication : IDisposable
     private ToolStripItem? _pluginsAnchor;
     private PluginsForm? _pluginsDialog;
     private long _lastPollTimestamp;
+
+    // Captured once at startup rather than read live from Debugger.IsAttached on every poll tick: the
+    // "Status…" menu item is only ever added once, at menu-build time, so whether the popup behind it
+    // gets kept up to date must follow that same one-time decision. A live re-read would drift out of
+    // sync the moment a debugger attaches or detaches from an already-running tray — either leaving a
+    // frozen, stale popup reachable after a detach, or resuming pointless formatting work after an
+    // attach with no menu entry to show it.
+    private bool _statusEnabled;
 
     // The launch/stop entries currently spliced in below "Plugins…", tracked so they can be removed
     // before each rebuild without disturbing the fixed items around them.
@@ -91,12 +102,18 @@ public sealed class TrayApplication : IDisposable
             _form = new StatusForm();
             // Force the window handle onto this STA thread now so Dispose()'s BeginInvoke always has a
             // valid target. The handle is otherwise created lazily on the first Show(), and a run where
-            // the popup is never opened would leave BeginInvoke to throw — ExitThread would never fire,
-            // the join would time out, and the NotifyIcon would linger as a ghost in the tray.
+            // the popup is never opened (no debugger attached, so "Status…" is never in the menu) would
+            // leave BeginInvoke to throw — ExitThread would never fire, the join would time out, and the
+            // NotifyIcon would linger as a ghost in the tray.
             _ = _form.Handle;
 
+            _statusEnabled = Debugger.IsAttached;
+
             _menu = new ContextMenuStrip();
-            _menu.Items.Add("Status…", null, (_, _) => ShowPopup());
+            // Debug-only convenience: never shown outside a Visual Studio debug session, and only ever
+            // reached from this menu entry — left-clicking the icon does not pop it up.
+            if (_statusEnabled)
+                _menu.Items.Add("Status…", null, (_, _) => ShowPopup());
             BuildControlMenu(_menu);
             // The installed set changes while the engine runs, but the menu is built once — so the
             // launch/stop entries are rebuilt each time the menu opens rather than pinned here.
@@ -108,11 +125,6 @@ public sealed class TrayApplication : IDisposable
                 Icon = _icons.For(TrayIconState.Idle),
                 Text = "GameCapture engine",
                 ContextMenuStrip = _menu,
-            };
-            _icon.MouseClick += (_, e) =>
-            {
-                if (e.Button == MouseButtons.Left)
-                    ShowPopup();
             };
 
             _lastPollTimestamp = Stopwatch.GetTimestamp();
@@ -153,7 +165,7 @@ public sealed class TrayApplication : IDisposable
         _form!.ShowNear(Cursor.Position);
     }
 
-    // Adds the control actions below "Status…" when the host wired them. Selecting a monitor or saving
+    // Adds the control actions when the host wired them. Selecting a monitor or saving
     // settings hands off to the host callback, which persists the change and restarts the engine — the
     // captured monitor, OCR pack, output dir and scan cadence are all bound at startup.
     private void BuildControlMenu(ContextMenuStrip menu)
@@ -273,7 +285,11 @@ public sealed class TrayApplication : IDisposable
             var view = TrayViewBuilder.Build(snapshot, _latestMetrics, _fps.Fps, _metricsEnabled);
             _icon!.Icon = _icons!.For(view.IconState);
             _icon.Text = view.Tooltip;
-            _form!.Update(view);
+            // The popup behind this can only ever be reached via the debug-gated "Status…" menu item,
+            // so formatting its contents when that item isn't in the menu would be pure wasted work on
+            // every poll tick for the life of the process.
+            if (_statusEnabled)
+                _form!.Update(view);
         }
         catch (Exception ex)
         {

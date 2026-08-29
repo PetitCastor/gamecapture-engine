@@ -42,7 +42,8 @@ public sealed class EngineConfig
 
     /// <summary>
     /// Show the Windows tray icon (live capture only). Reflects engine state, metrics and connected
-    /// plugins; the metrics popup depends on <see cref="MetricsEnabled"/> for its process-health line.
+    /// plugins; the debug-only status popup depends on <see cref="MetricsEnabled"/> for its
+    /// process-health line.
     /// </summary>
     public bool TrayEnabled { get; set; } = true;
 
