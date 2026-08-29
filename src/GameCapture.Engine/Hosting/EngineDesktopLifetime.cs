@@ -237,6 +237,18 @@ internal sealed class EngineDesktopLifetime : IDisposable
             language = "";
         }
 
+        // An unparseable hotkey would make the relaunched process exit before the tray exists (see
+        // InitializeHotkey); retain the previous, already-valid hotkey instead of persisting garbage.
+        var hotkey = settings.Hotkey;
+        try
+        {
+            HotkeyListener.ParseHotkey(hotkey);
+        }
+        catch (FormatException)
+        {
+            hotkey = currentSettings.Hotkey;
+        }
+
         // Patch only changed fields. Reserializing the loaded config would bake a relative outputDir
         // into the absolute path resolved in memory.
         var changes = new Dictionary<string, object>();
@@ -246,8 +258,8 @@ internal sealed class EngineDesktopLifetime : IDisposable
             changes["ocrLanguage"] = language;
         if (settings.ScanIntervalMs != currentSettings.ScanIntervalMs)
             changes["scanIntervalMs"] = settings.ScanIntervalMs;
-        if (settings.Hotkey != currentSettings.Hotkey)
-            changes["hotkey"] = settings.Hotkey;
+        if (hotkey != currentSettings.Hotkey)
+            changes["hotkey"] = hotkey;
         if (settings.PipeName != currentSettings.PipeName)
             changes["pipeName"] = settings.PipeName;
         if (settings.MetricsEnabled != currentSettings.MetricsEnabled)

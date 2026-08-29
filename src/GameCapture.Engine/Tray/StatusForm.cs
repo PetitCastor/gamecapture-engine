@@ -5,10 +5,9 @@ using System.Windows.Forms;
 namespace GameCapture.Engine.Tray;
 
 /// <summary>
-/// An invisible carrier for engine mode, frame size, OCR language, scanned FPS, process metrics, and
-/// the connected-plugin list. Never shown; <see cref="TrayApplication"/> keeps it alive only for its
-/// window handle, which <see cref="TrayApplication.Dispose"/> needs as a valid <c>BeginInvoke</c>
-/// target to marshal shutdown onto the tray's UI thread.
+/// The small read-only popup behind the debug-only "Status…" menu item: engine mode, frame size, OCR
+/// language, scanned FPS, process metrics, and the connected-plugin list. A tool window that hides
+/// itself as soon as it loses focus, so it behaves like a menu rather than a window to manage.
 /// </summary>
 /// <remarks>
 /// UI edge, excluded from the coverage gate. All formatting is done in <see cref="TrayViewBuilder"/>;
@@ -39,7 +38,7 @@ public sealed class StatusForm : Form
         Controls.Add(_body);
     }
 
-    /// <summary>Replaces the tracked contents. Safe to call from the UI thread only.</summary>
+    /// <summary>Replaces the popup contents. Safe to call from the UI thread only.</summary>
     public void Update(TrayView view)
     {
         var sb = new StringBuilder();
@@ -54,5 +53,36 @@ public sealed class StatusForm : Form
             ? "Plugins   none connected"
             : $"Plugins   {string.Join(Environment.NewLine + "          ", view.Plugins)}");
         _body.Text = sb.ToString();
+    }
+
+    /// <summary>Shows the popup anchored above-left of the cursor, clamped onto the working area.</summary>
+    public void ShowNear(Point anchor)
+    {
+        var area = Screen.FromPoint(anchor).WorkingArea;
+        var x = Math.Min(anchor.X, area.Right - Width);
+        var y = Math.Min(anchor.Y - Height, area.Bottom - Height);
+        Location = new Point(Math.Max(area.Left, x), Math.Max(area.Top, y));
+        Show();
+        Activate();
+    }
+
+    protected override void OnDeactivate(EventArgs e)
+    {
+        base.OnDeactivate(e);
+        Hide();
+    }
+
+    // Closing the popup (Alt+F4, its own chrome) must not tear down the tray; hide instead, and let
+    // TrayApplication dispose it for real on shutdown.
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (e.CloseReason == CloseReason.UserClosing)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+
+        base.OnFormClosing(e);
     }
 }

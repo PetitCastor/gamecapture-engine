@@ -8,11 +8,12 @@ namespace GameCapture.Engine.Tray;
 /// <summary>
 /// Hosts the Windows tray icon inside the engine process. Runs its own STA thread with a WinForms
 /// message loop; a UI timer polls <see cref="EngineStatus"/> and the latest metrics sample, composes
-/// a <see cref="TrayView"/>, and repaints the icon and tooltip. The right-click context menu is a
-/// debug convenience — it is only built when a Visual Studio debugger is attached to the process, and
-/// even then offers no status popup, only actions. When a <see cref="TrayControls"/> is supplied the
-/// menu offers monitor selection, a settings screen and an exit action; those callbacks are the host's,
-/// since applying any of them means persisting config and restarting. When that record also carries
+/// a <see cref="TrayView"/>, and repaints the icon and tooltip. Left-clicking the icon never pops
+/// anything up. The right-click context menu carries a "Status…" popup entry, but only when a Visual
+/// Studio debugger is attached to the process — it is absent for a normal player-facing launch. When a
+/// <see cref="TrayControls"/> is supplied the menu also offers monitor selection, a settings screen and
+/// an exit action (always present, debugger or not); those callbacks are the host's, since applying any
+/// of them means persisting config and restarting. When that record also carries
 /// <see cref="Plugins.PluginServices"/>, the menu gains the plugin manager and a launch/stop entry per
 /// installed plugin — those act immediately, with no restart.
 /// </summary>
@@ -92,21 +93,21 @@ public sealed class TrayApplication : IDisposable
             _icons = new TrayIconFactory();
             _form = new StatusForm();
             // Force the window handle onto this STA thread now so Dispose()'s BeginInvoke always has a
-            // valid target. The form is never shown, so the handle is otherwise created lazily on first
-            // use — never, in this case — which would leave BeginInvoke to throw: ExitThread would never
-            // fire, the join would time out, and the NotifyIcon would linger as a ghost in the tray.
+            // valid target. The handle is otherwise created lazily on the first Show(), and a run where
+            // the popup is never opened (no debugger attached, so "Status…" is never in the menu) would
+            // leave BeginInvoke to throw — ExitThread would never fire, the join would time out, and the
+            // NotifyIcon would linger as a ghost in the tray.
             _ = _form.Handle;
 
-            // The context menu is a debug convenience — it only appears when the engine is being run
-            // under the Visual Studio debugger, never for a normal player-facing launch.
+            _menu = new ContextMenuStrip();
+            // Debug-only convenience: never shown outside a Visual Studio debug session, and only ever
+            // reached from this menu entry — left-clicking the icon does not pop it up.
             if (Debugger.IsAttached)
-            {
-                _menu = new ContextMenuStrip();
-                BuildControlMenu(_menu);
-                // The installed set changes while the engine runs, but the menu is built once — so the
-                // launch/stop entries are rebuilt each time the menu opens rather than pinned here.
-                _menu.Opening += (_, _) => RebuildPluginItems();
-            }
+                _menu.Items.Add("Status…", null, (_, _) => ShowPopup());
+            BuildControlMenu(_menu);
+            // The installed set changes while the engine runs, but the menu is built once — so the
+            // launch/stop entries are rebuilt each time the menu opens rather than pinned here.
+            _menu.Opening += (_, _) => RebuildPluginItems();
 
             _icon = new NotifyIcon
             {
@@ -146,6 +147,12 @@ public sealed class TrayApplication : IDisposable
             _form?.Dispose();
             _icons?.Dispose();
         }
+    }
+
+    private void ShowPopup()
+    {
+        Refresh();
+        _form!.ShowNear(Cursor.Position);
     }
 
     // Adds the control actions when the host wired them. Selecting a monitor or saving
