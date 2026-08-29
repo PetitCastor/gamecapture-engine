@@ -6,8 +6,8 @@ namespace GameCapture.Engine.Tests;
 /// <summary>
 /// Pins <see cref="EngineRelaunch.StripPersistedOverrides"/>: the tray persists a monitor/settings
 /// change to config and relaunches, so the CLI flags that would re-override those very fields
-/// (<c>--monitor</c>, <c>--ocr-lang</c>) must be dropped from the relaunch args while every other
-/// flag survives intact.
+/// (<c>--monitor</c>, <c>--ocr-lang</c>, <c>--pipe</c>) must be dropped from the relaunch args while
+/// every other flag survives intact.
 /// </summary>
 public class EngineRelaunchTests
 {
@@ -26,11 +26,20 @@ public class EngineRelaunchTests
     }
 
     [Fact]
-    public void Strips_both_overrides_when_present_together()
+    public void Strips_pipe_flag_and_its_value()
+    {
+        // A tray-saved PipeName change must win on restart, not be immediately shadowed by the
+        // original launch's --pipe argument (Program.cs prefers the CLI flag over config).
+        var result = EngineRelaunch.StripPersistedOverrides(["--pipe", "custom", "--verbose"]);
+        Assert.Equal(["--verbose"], result);
+    }
+
+    [Fact]
+    public void Strips_all_three_overrides_when_present_together()
     {
         var result = EngineRelaunch.StripPersistedOverrides(
             ["--pipe", "custom", "--monitor", "2", "--ocr-lang", "fr-FR", "--verbose"]);
-        Assert.Equal(["--pipe", "custom", "--verbose"], result);
+        Assert.Equal(["--verbose"], result);
     }
 
     [Fact]
@@ -43,7 +52,7 @@ public class EngineRelaunchTests
     [Fact]
     public void Preserves_unrelated_flags_verbatim()
     {
-        string[] args = ["--pipe", "p", "--video", "clip.mp4", "--video-fps", "2.5", "--verbose"];
+        string[] args = ["--video", "clip.mp4", "--video-fps", "2.5", "--verbose"];
         var result = EngineRelaunch.StripPersistedOverrides(args);
         Assert.Equal(args, result);
     }
