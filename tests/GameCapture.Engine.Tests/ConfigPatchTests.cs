@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using GameCapture.Engine;
 using Xunit;
@@ -56,6 +57,16 @@ public class ConfigPatchTests
         var result = ConfigPatch.Apply("{}", new Dictionary<string, object> { ["monitorIndex"] = 1 });
         var node = JsonNode.Parse(result)!.AsObject();
         Assert.Equal(1, (int)node["monitorIndex"]!);
+    }
+
+    [Fact]
+    public void Applies_a_bool_change()
+    {
+        var result = ConfigPatch.Apply(Sample, new Dictionary<string, object> { ["trayEnabled"] = false });
+        var node = JsonNode.Parse(result)!.AsObject();
+
+        Assert.False((bool)node["trayEnabled"]!);
+        Assert.Equal(JsonValueKind.False, node["trayEnabled"]!.GetValueKind()); // a real JSON literal, not "false"
     }
 
     [Fact]
