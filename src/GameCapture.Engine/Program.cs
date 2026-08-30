@@ -1,4 +1,5 @@
 using GameCapture.Engine;
+using GameCapture.Engine.Updates;
 using Velopack;
 
 // Ahead of every other statement, including the console allocation below, because this is not
@@ -17,6 +18,10 @@ ConsoleWindowVisibility.EnsureDebugConsole();
 using var sink = new ConsoleSink();
 
 sink.WriteLine("=== GameCapture — Capture Engine ===");
+
+// Fire-and-forget: never blocks startup on a network call. Result (if any) lands whenever the
+// request resolves, interleaved through the same lock-guarded sink as every other status line.
+_ = EngineUpdateChecker.CheckAsync(sink);
 
 var configPath = EngineConfig.GetDefaultPath();
 EngineConfig config;
