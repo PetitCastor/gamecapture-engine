@@ -14,6 +14,9 @@ public static class PluginPaths
     /// <summary>Install-state document, one per user.</summary>
     public const string StateFileName = "installed.json";
 
+    /// <summary>Plugin-manager preferences, separate from engine-wide settings and install state.</summary>
+    public const string SettingsFileName = "settings.json";
+
     /// <summary>Staging area for downloads. On the same volume as the install folders so the
     /// swap-into-place at the end of an install is a move, not a copy.</summary>
     public const string StagingDirectoryName = ".staging";
@@ -27,6 +30,9 @@ public static class PluginPaths
 
     /// <summary>Path of the install-state document under <paramref name="root"/>.</summary>
     public static string StateFile(string root) => Path.Combine(root, StateFileName);
+
+    /// <summary>Path of the plugin-manager preferences document under <paramref name="root"/>.</summary>
+    public static string SettingsFile(string root) => Path.Combine(root, SettingsFileName);
 
     /// <summary>
     /// Install directory for one catalog id. Rejects an id that has not passed

@@ -31,6 +31,7 @@ public class PluginCatalogTests
         Assert.Equal("MissionPlugin", entry.Name);
         Assert.Equal("Watches the mission board.", entry.Description);
         Assert.EndsWith("MissionPlugin-win-x64.zip", entry.DownloadUrl, StringComparison.Ordinal);
+        Assert.Equal(ReleaseChannel.Stable, entry.Channel);
         Assert.Equal("", error);
     }
 
@@ -56,6 +57,20 @@ public class PluginCatalogTests
 
         Assert.Empty(entries);
         Assert.NotEqual("", error);
+    }
+
+    [Fact]
+    public void TryParse_PreviewCatalog_RequiresPreviewEntries()
+    {
+        const string preview = """
+            [{ "id": "mission-plugin", "name": "MissionPlugin", "description": "d",
+               "downloadUrl": "https://github.com/PetitCastor/gamecapture-plugins/releases/download/v1.0.17-mission-alpha.1/MissionPlugin-win-x64.zip",
+               "channel": "preview" }]
+            """;
+
+        Assert.True(PluginCatalog.TryParse(preview, ReleaseChannel.Preview, out var entries, out _));
+        Assert.Equal(ReleaseChannel.Preview, Assert.Single(entries).Channel);
+        Assert.False(PluginCatalog.TryParse(preview, ReleaseChannel.Stable, out _, out _));
     }
 
     [Theory]
@@ -112,10 +127,12 @@ public class PluginCatalogTests
             new Uri("https://github.com/PetitCastor/gamecapture-plugins/releases/download/v1.0.4/A.zip")));
 
     [Fact]
-    public void IsCatalogUrl_AcceptsOnlyThePluginsRepositoryRawPath()
+    public void IsCatalogUrl_AcceptsOnlyTheTwoPublishedCatalogs()
     {
-        Assert.True(PluginCatalog.IsCatalogUrl(PluginCatalog.CatalogUrl));
+        Assert.True(PluginCatalog.IsCatalogUrl(PluginCatalog.StableCatalogUrl));
+        Assert.True(PluginCatalog.IsCatalogUrl(PluginCatalog.PreviewCatalogUrl));
         Assert.False(PluginCatalog.IsCatalogUrl("https://raw.githubusercontent.com/attacker/evil/master/plugins.json"));
+        Assert.False(PluginCatalog.IsCatalogUrl("https://raw.githubusercontent.com/PetitCastor/gamecapture-plugins/master/other.json"));
     }
 
     [Theory]

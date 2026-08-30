@@ -17,7 +17,8 @@ public static class PluginRowBuilder
         IReadOnlyList<CatalogEntry> catalog,
         IReadOnlyDictionary<string, InstalledPlugin> installed,
         IReadOnlyCollection<string> runningIds,
-        IReadOnlyDictionary<string, string> latestVersions)
+        IReadOnlyDictionary<string, string> latestVersions,
+        IReadOnlyCollection<string>? updatesPausedIds = null)
     {
         var rows = new List<PluginRow>(catalog.Count);
 
@@ -27,6 +28,10 @@ public static class PluginRowBuilder
             var isInstalled = installed.TryGetValue(entry.Id, out var record);
             latestVersions.TryGetValue(entry.Id, out var latest);
             latest ??= "";
+            var updatesPaused = entry.Channel == ReleaseChannel.Preview
+                                && isInstalled
+                                && record!.Channel == ReleaseChannel.Preview
+                                && updatesPausedIds?.Contains(entry.Id) == true;
 
             // A blocked entry stays visible and keeps whatever it reports about an existing install:
             // hiding it would make a plugin that silently vanished from the list indistinguishable
@@ -35,7 +40,7 @@ public static class PluginRowBuilder
                 ? PluginRowState.Blocked
                 : !isInstalled
                     ? PluginRowState.NotInstalled
-                    : latest.Length > 0 && !string.Equals(latest, record!.Version, StringComparison.OrdinalIgnoreCase)
+                    : !updatesPaused && latest.Length > 0 && !string.Equals(latest, record!.Version, StringComparison.OrdinalIgnoreCase)
                         ? PluginRowState.UpdateAvailable
                         : PluginRowState.Installed;
 
@@ -44,7 +49,8 @@ public static class PluginRowBuilder
                 state,
                 isInstalled ? record!.Version : "",
                 latest,
-                runningIds.Contains(entry.Id)));
+                runningIds.Contains(entry.Id),
+                updatesPaused));
         }
 
         return rows;

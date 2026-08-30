@@ -11,9 +11,13 @@ namespace GameCapture.Engine.Plugins;
 /// <param name="Version">Release tag the asset was downloaded from, e.g. <c>v1.0.4</c>.</param>
 /// <param name="ExecutablePath">Absolute path of the extracted exe.</param>
 /// <param name="InstalledUtc">When the install completed.</param>
+/// <param name="DownloadUrl">Immutable asset URL used for the install, retained for a paused preview.</param>
+/// <param name="Channel">Release channel at install time; missing legacy values are stable.</param>
 public sealed record InstalledPlugin(
     string Id,
     string Name,
     string Version,
     string ExecutablePath,
-    DateTimeOffset InstalledUtc);
+    DateTimeOffset InstalledUtc,
+    string DownloadUrl = "",
+    ReleaseChannel Channel = ReleaseChannel.Stable);

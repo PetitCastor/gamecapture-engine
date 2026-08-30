@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace GameCapture.Engine.Plugins;
 
@@ -15,6 +16,7 @@ public sealed class PluginInstallState
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     private readonly Dictionary<string, InstalledPlugin> _entries;
