@@ -111,8 +111,9 @@ internal sealed class EngineDesktopLifetime : IDisposable
             _config.TrayEnabled);
 
         // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
-        // headless run has nobody to click Install. Neither service touches engine-config.json, so a
-        // plugin install never takes the restart path the settings callbacks below do.
+        // headless run has nobody to click Install. None of installer, launcher, or manager settings
+        // touch engine-config.json, so a plugin install never takes the restart path the settings
+        // callbacks below do.
         var pluginRoot = PluginPaths.DefaultRoot();
         _pluginInstaller = new PluginInstaller(pluginRoot);
         _pluginLauncher = new PluginLauncher();

@@ -55,6 +55,15 @@ re-checks every redirect a download follows, so an entry pointing anywhere else 
 **Blocked** with no way to install it. And a downloaded archive must unpack entirely inside its own
 plugin folder and contain exactly one executable, or it is rejected before anything is written.
 
+### Preview plugins
+
+The dialog also has an **Include preview plugins (may be unstable)** checkbox, off by default. It
+fetches a second, opt-in catalog alongside the stable one and adds a one-time confirmation before
+the first preview install. Preview entries show their own status line ("Preview installed", "Preview
+update available", …), and updates to an already-installed preview can be paused independently —
+that plugin stays launchable and removable, just no longer offered a reinstall or update, until you
+resume it.
+
 Plugin binaries are not code-signed, for the same reason the installer is not. They run as ordinary
 processes with your user's permissions.
 

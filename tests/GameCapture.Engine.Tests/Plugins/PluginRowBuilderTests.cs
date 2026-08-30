@@ -171,6 +171,7 @@ public class PluginRowBuilderTests
         Assert.Equal("Preview installed (updates paused)", row.StateText);
         Assert.True(row.CanLaunch);
         Assert.True(row.CanRemove);
+        Assert.False(row.CanReinstall);
     }
 
     [Fact]

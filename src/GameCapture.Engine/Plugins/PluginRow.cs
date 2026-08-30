@@ -46,8 +46,11 @@ public sealed record PluginRow(
     /// <summary>Installing over a running plugin means replacing files it has open: stop it first.</summary>
     public bool CanInstall => State is PluginRowState.NotInstalled or PluginRowState.UpdateAvailable && !IsRunning;
 
-    /// <summary>Reinstalling the same version is allowed — it is the repair path for a damaged folder.</summary>
-    public bool CanReinstall => State is PluginRowState.Installed && !IsRunning;
+    /// <summary>
+    /// Reinstalling the same version is allowed — it is the repair path for a damaged folder — but not
+    /// while updates are intentionally paused, since a reinstall would just refetch the same build.
+    /// </summary>
+    public bool CanReinstall => State is PluginRowState.Installed && !IsRunning && !UpdatesPaused;
 
     /// <summary>Removing deletes the folder, so the same running-process rule applies.</summary>
     public bool CanRemove => State is PluginRowState.Installed or PluginRowState.UpdateAvailable && !IsRunning;

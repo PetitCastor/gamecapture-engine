@@ -215,13 +215,11 @@ public sealed class PluginsForm : Form
                 try
                 {
                     var previews = await _services.Installer.FetchPreviewCatalogAsync(_work.Token);
-                    var stableIds = stable.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
-                    if (previews.Any(entry => stableIds.Contains(entry.Id)))
-                        throw new InvalidOperationException("The preview catalog duplicates a stable plugin id.");
-
-                    catalog.AddRange(previews);
+                    catalog = PluginCatalogMerge.Combine(stable, previews, out var droppedIds).ToList();
+                    if (droppedIds.Count > 0)
+                        previewError = $"Preview catalog id(s) already used by a stable plugin were skipped: {string.Join(", ", droppedIds)}.";
                 }
-                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+                catch (HttpRequestException ex)
                 {
                     previewError = $"Preview catalog unavailable: {ex.Message}";
                 }
@@ -406,7 +404,7 @@ public sealed class PluginsForm : Form
     {
         var row = SelectedRow();
         _install.Text = row?.InstallActionText ?? "Install";
-        _install.Enabled = !_busy && row is not null && !row.UpdatesPaused && (row.CanInstall || row.CanReinstall);
+        _install.Enabled = !_busy && row is not null && (row.CanInstall || row.CanReinstall);
         _remove.Enabled = !_busy && row is { CanRemove: true };
         _launch.Enabled = !_busy && row is { CanLaunch: true };
         _stop.Enabled = !_busy && row is { CanStop: true };

@@ -23,9 +23,9 @@ namespace GameCapture.Engine.Plugins;
 public static class PluginCatalog
 {
     /// <summary>
-    /// The one catalog the engine reads. Deliberately not configurable: a settings knob pointing at
-    /// an arbitrary catalog would hand an attacker the plugin list and, through it, the install
-    /// prompt — and the host allowlist below would be the only thing left standing.
+    /// The catalog every engine reads by default. Deliberately not configurable: a settings knob
+    /// pointing at an arbitrary catalog would hand an attacker the plugin list and, through it, the
+    /// install prompt — and the host allowlist below would be the only thing left standing.
     /// </summary>
     public const string StableCatalogUrl =
         "https://raw.githubusercontent.com/PetitCastor/gamecapture-plugins/master/plugins.json";
@@ -63,9 +63,10 @@ public static class PluginCatalog
     };
 
     /// <summary>
-    /// Reads the catalog document. Entries missing a required field are dropped rather than failing
-    /// the whole fetch, so one malformed row cannot hide the rest of the catalog; malformed JSON
-    /// fails outright, because then nothing about the document can be believed.
+    /// Reads the catalog document. Entries missing a required field, or with a value (such as an
+    /// unrecognized <c>channel</c>) that fails to parse, are dropped rather than failing the whole
+    /// fetch, so one malformed row cannot hide the rest of the catalog; malformed JSON fails
+    /// outright, because then nothing about the document can be believed.
     /// </summary>
     /// <param name="json">Raw catalog document.</param>
     /// <param name="entries">Parsed entries; empty when parsing failed.</param>
@@ -74,10 +75,10 @@ public static class PluginCatalog
     {
         entries = [];
 
-        List<CatalogEntry>? parsed;
+        JsonDocument document;
         try
         {
-            parsed = JsonSerializer.Deserialize<List<CatalogEntry>>(json, JsonOptions);
+            document = JsonDocument.Parse(json);
         }
         catch (JsonException ex)
         {
@@ -85,19 +86,47 @@ public static class PluginCatalog
             return false;
         }
 
-        if (parsed is null)
+        using (document)
         {
-            error = "The plugin catalog was empty.";
-            return false;
-        }
+            if (document.RootElement.ValueKind == JsonValueKind.Null)
+            {
+                error = "The plugin catalog was empty.";
+                return false;
+            }
 
-        entries = parsed
-            .Where(e => !string.IsNullOrWhiteSpace(e.Id)
-                        && !string.IsNullOrWhiteSpace(e.Name)
-                        && !string.IsNullOrWhiteSpace(e.DownloadUrl))
-            .ToList();
-        error = "";
-        return true;
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                error = "The plugin catalog could not be read: expected a JSON array.";
+                return false;
+            }
+
+            var parsed = new List<CatalogEntry>();
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                CatalogEntry? entry;
+                try
+                {
+                    entry = element.Deserialize<CatalogEntry>(JsonOptions);
+                }
+                catch (JsonException)
+                {
+                    // A single entry with, say, an unrecognized channel name must not hide the rest
+                    // of the catalog — this is the same dropped-entry policy as a missing field.
+                    continue;
+                }
+
+                if (entry is not null)
+                    parsed.Add(entry);
+            }
+
+            entries = parsed
+                .Where(e => !string.IsNullOrWhiteSpace(e.Id)
+                            && !string.IsNullOrWhiteSpace(e.Name)
+                            && !string.IsNullOrWhiteSpace(e.DownloadUrl))
+                .ToList();
+            error = "";
+            return true;
+        }
     }
 
     /// <summary>Parses one channel's catalog and rejects entries declared for another channel.</summary>
