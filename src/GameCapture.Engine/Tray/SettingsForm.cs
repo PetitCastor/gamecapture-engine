@@ -4,11 +4,12 @@ using System.Windows.Forms;
 namespace GameCapture.Engine.Tray;
 
 /// <summary>
-/// The modal settings screen reached from the tray menu: every <see cref="EngineSettings"/> field —
-/// output directory, OCR language, scan interval, hotkey, pipe name, metrics on/off and interval, and
-/// tray on/off. Seeded from an <see cref="EngineSettings"/> and, on OK, exposes the edited one through
-/// <see cref="Result"/>. Applying a change is the host's job (persist + restart); this form only
-/// collects it — every field here is bound at engine startup and cannot change in place.
+/// The modal settings screen reached from the tray menu: output directory, OCR language, scan
+/// interval, and hotkey — the <see cref="EngineSettings"/> fields exposed for editing. The remaining
+/// fields (pipe name, metrics, tray) pass through unedited. Seeded from an <see cref="EngineSettings"/>
+/// and, on OK, exposes the edited one through <see cref="Result"/>. Applying a change is the host's job
+/// (persist + restart); this form only collects it — every field here is bound at engine startup and
+/// cannot change in place.
 /// </summary>
 /// <remarks>
 /// UI edge, excluded from the coverage gate: it cannot instantiate without a desktop. It holds no
@@ -23,10 +24,6 @@ public sealed class SettingsForm : Form
     private readonly ComboBox _ocrLanguage;
     private readonly NumericUpDown _scanInterval;
     private readonly TextBox _hotkey;
-    private readonly TextBox _pipeName;
-    private readonly CheckBox _metricsEnabled;
-    private readonly NumericUpDown _metricsInterval;
-    private readonly CheckBox _trayEnabled;
 
     /// <summary>The edited settings; only meaningful after the dialog closes with <see cref="DialogResult.OK"/>.</summary>
     public EngineSettings Result { get; private set; }
@@ -77,17 +74,6 @@ public sealed class SettingsForm : Form
         };
 
         _hotkey = new TextBox { Width = 200, Text = current.Hotkey };
-        _pipeName = new TextBox { Width = 200, Text = current.PipeName };
-        _metricsEnabled = new CheckBox { Checked = current.MetricsEnabled, AutoSize = true };
-        _metricsInterval = new NumericUpDown
-        {
-            Minimum = 250,   // matches the engine's clamp floor
-            Maximum = 60_000,
-            Increment = 50,
-            Value = Math.Clamp(current.MetricsIntervalMs, 250, 60_000),
-            Width = 100,
-        };
-        _trayEnabled = new CheckBox { Checked = current.TrayEnabled, AutoSize = true };
 
         var grid = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, Dock = DockStyle.Top };
         grid.Controls.Add(new Label { Text = "Output directory", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 3) }, 0, 0);
@@ -98,14 +84,6 @@ public sealed class SettingsForm : Form
         grid.Controls.Add(_scanInterval, 1, 2);
         grid.Controls.Add(new Label { Text = "Hotkey", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 3) }, 0, 3);
         grid.Controls.Add(_hotkey, 1, 3);
-        grid.Controls.Add(new Label { Text = "Pipe name", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 3) }, 0, 4);
-        grid.Controls.Add(_pipeName, 1, 4);
-        grid.Controls.Add(new Label { Text = "Metrics enabled", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 3) }, 0, 5);
-        grid.Controls.Add(_metricsEnabled, 1, 5);
-        grid.Controls.Add(new Label { Text = "Metrics interval (ms)", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 3) }, 0, 6);
-        grid.Controls.Add(_metricsInterval, 1, 6);
-        grid.Controls.Add(new Label { Text = "Tray enabled", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 12, 3) }, 0, 7);
-        grid.Controls.Add(_trayEnabled, 1, 7);
 
         var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true };
         ok.Click += (_, _) => Commit();
@@ -144,17 +122,14 @@ public sealed class SettingsForm : Form
         var hotkey = _hotkey.Text.Trim();
         if (hotkey.Length == 0)
             hotkey = Result.Hotkey;
-        var pipeName = _pipeName.Text.Trim();
-        if (pipeName.Length == 0)
-            pipeName = Result.PipeName;
         Result = new EngineSettings(
             outputDir,
             language,
             (int)_scanInterval.Value,
             hotkey,
-            pipeName,
-            _metricsEnabled.Checked,
-            (int)_metricsInterval.Value,
-            _trayEnabled.Checked);
+            Result.PipeName,
+            Result.MetricsEnabled,
+            Result.MetricsIntervalMs,
+            Result.TrayEnabled);
     }
 }
