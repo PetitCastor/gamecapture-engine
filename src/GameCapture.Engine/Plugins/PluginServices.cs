@@ -7,4 +7,8 @@ namespace GameCapture.Engine.Plugins;
 /// </summary>
 /// <param name="Installer">Catalog fetch, install, update and removal.</param>
 /// <param name="Launcher">Start/stop of installed plugins as child processes.</param>
-public sealed record PluginServices(PluginInstaller Installer, PluginLauncher Launcher);
+/// <param name="Settings">Per-user preview-channel preference.</param>
+public sealed record PluginServices(
+    PluginInstaller Installer,
+    PluginLauncher Launcher,
+    PluginManagerSettings Settings);

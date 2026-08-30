@@ -113,7 +113,8 @@ internal sealed class EngineDesktopLifetime : IDisposable
         // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
         // headless run has nobody to click Install. Neither service touches engine-config.json, so a
         // plugin install never takes the restart path the settings callbacks below do.
-        _pluginInstaller = new PluginInstaller(PluginPaths.DefaultRoot());
+        var pluginRoot = PluginPaths.DefaultRoot();
+        _pluginInstaller = new PluginInstaller(pluginRoot);
         _pluginLauncher = new PluginLauncher();
 
         var controls = new TrayControls(
@@ -125,7 +126,10 @@ internal sealed class EngineDesktopLifetime : IDisposable
                 PersistAndRestart(new Dictionary<string, object> { ["monitorIndex"] = index }),
             OnSaveSettings: settings => SaveSettings(currentSettings, settings),
             OnExit: _shutdown.Cancel,
-            Plugins: new PluginServices(_pluginInstaller, _pluginLauncher));
+            Plugins: new PluginServices(
+                _pluginInstaller,
+                _pluginLauncher,
+                PluginManagerSettings.Load(PluginPaths.SettingsFile(pluginRoot))));
 
         _tray = new TrayApplication(
             _sink,

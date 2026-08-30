@@ -38,15 +38,34 @@ public sealed class PluginInstaller : IDisposable
     /// <summary>What is installed for this user. Reloaded from disk only at construction.</summary>
     public PluginInstallState State { get; }
 
-    /// <summary>Downloads and parses <c>plugins.json</c>.</summary>
+    /// <summary>Downloads and parses the stable <c>plugins.json</c> catalog.</summary>
     /// <exception cref="InvalidOperationException">The catalog could not be fetched or read.</exception>
     public async Task<IReadOnlyList<CatalogEntry>> FetchCatalogAsync(CancellationToken cancellationToken)
+        => await FetchCatalogAsync(
+            new Uri(PluginCatalog.StableCatalogUrl),
+            PluginCatalog.IsStableCatalogUri,
+            ReleaseChannel.Stable,
+            cancellationToken);
+
+    /// <summary>Downloads the opt-in preview catalog. Call only after the user enables previews.</summary>
+    public async Task<IReadOnlyList<CatalogEntry>> FetchPreviewCatalogAsync(CancellationToken cancellationToken)
+        => await FetchCatalogAsync(
+            new Uri(PluginCatalog.PreviewCatalogUrl),
+            PluginCatalog.IsPreviewCatalogUri,
+            ReleaseChannel.Preview,
+            cancellationToken);
+
+    private async Task<IReadOnlyList<CatalogEntry>> FetchCatalogAsync(
+        Uri catalogUri,
+        Func<Uri, bool> isAllowedCatalogUri,
+        ReleaseChannel expectedChannel,
+        CancellationToken cancellationToken)
     {
         using var response = await GetFollowingRedirectsAsync(
-            new Uri(PluginCatalog.CatalogUrl), PluginCatalog.IsCatalogUri, cancellationToken);
+            catalogUri, isAllowedCatalogUri, cancellationToken);
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!PluginCatalog.TryParse(json, out var entries, out var error))
+        if (!PluginCatalog.TryParse(json, expectedChannel, out var entries, out var error))
             throw new InvalidOperationException(error);
 
         return entries;
@@ -124,7 +143,9 @@ public sealed class PluginInstaller : IDisposable
                 entry.Name,
                 version.Length > 0 ? version : "unknown",
                 Path.Combine(destination, Path.GetRelativePath(payload, executable)),
-                DateTimeOffset.UtcNow);
+                DateTimeOffset.UtcNow,
+                entry.DownloadUrl,
+                entry.Channel);
 
             State.Set(installed);
             State.Save();

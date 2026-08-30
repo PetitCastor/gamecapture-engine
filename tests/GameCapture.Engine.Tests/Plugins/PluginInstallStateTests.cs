@@ -77,4 +77,18 @@ public class PluginInstallStateTests : IDisposable
 
         Assert.Empty(PluginInstallState.Load(StatePath).Entries);
     }
+
+    [Fact]
+    public void LegacyDocument_DefaultsMissingChannelAndUrlToStable()
+    {
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(StatePath, """
+            [{ "id": "mission-plugin", "name": "MissionPlugin", "version": "v1.0.4",
+               "executablePath": "C:\\plugins\\mission-plugin\\MissionPlugin.exe", "installedUtc": "1970-01-01T00:00:00+00:00" }]
+            """);
+
+        Assert.True(PluginInstallState.Load(StatePath).TryGet("mission-plugin", out var installed));
+        Assert.Equal(ReleaseChannel.Stable, installed.Channel);
+        Assert.Equal("", installed.DownloadUrl);
+    }
 }

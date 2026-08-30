@@ -12,17 +12,24 @@ public class PluginRowBuilderTests
     private const string TrustedUrl =
         "https://github.com/PetitCastor/gamecapture-plugins/releases/latest/download/MissionPlugin-win-x64.zip";
 
-    private static CatalogEntry Entry(string id = "mission-plugin", string url = TrustedUrl)
-        => new(id, "MissionPlugin", "Watches the mission board.", url);
+    private static CatalogEntry Entry(
+        string id = "mission-plugin",
+        string url = TrustedUrl,
+        ReleaseChannel channel = ReleaseChannel.Stable)
+        => new(id, "MissionPlugin", "Watches the mission board.", url, channel);
 
-    private static InstalledPlugin Installed(string id = "mission-plugin", string version = "v1.0.4")
-        => new(id, "MissionPlugin", version, $@"C:\plugins\{id}\{id}.exe", DateTimeOffset.UnixEpoch);
+    private static InstalledPlugin Installed(
+        string id = "mission-plugin",
+        string version = "v1.0.4",
+        ReleaseChannel channel = ReleaseChannel.Stable)
+        => new(id, "MissionPlugin", version, $@"C:\plugins\{id}\{id}.exe", DateTimeOffset.UnixEpoch, TrustedUrl, channel);
 
     private static PluginRow Build(
         CatalogEntry entry,
         InstalledPlugin? installed = null,
         bool running = false,
-        string? latest = null)
+        string? latest = null,
+        bool updatesPaused = false)
     {
         var state = installed is null
             ? new Dictionary<string, InstalledPlugin>()
@@ -31,7 +38,12 @@ public class PluginRowBuilderTests
             ? new Dictionary<string, string>()
             : new Dictionary<string, string> { [entry.Id] = latest };
 
-        return Assert.Single(PluginRowBuilder.Build([entry], state, running ? [entry.Id] : [], versions));
+        return Assert.Single(PluginRowBuilder.Build(
+            [entry],
+            state,
+            running ? [entry.Id] : [],
+            versions,
+            updatesPaused ? [entry.Id] : []));
     }
 
     [Fact]
@@ -134,5 +146,43 @@ public class PluginRowBuilderTests
             new Dictionary<string, string>());
 
         Assert.Equal(["refinery-plugin", "mission-plugin"], rows.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void PreviewNotOnDisk_IsClearlyLabelled()
+    {
+        var row = Build(Entry(channel: ReleaseChannel.Preview));
+
+        Assert.Equal(PluginRowState.NotInstalled, row.State);
+        Assert.Equal("Preview (not installed)", row.StateText);
+    }
+
+    [Fact]
+    public void DisabledPreview_StaysLaunchableButNeverOffersAnUpdate()
+    {
+        var row = Build(
+            Entry(channel: ReleaseChannel.Preview),
+            Installed(channel: ReleaseChannel.Preview),
+            latest: "v1.0.17-mission-alpha.2",
+            updatesPaused: true);
+
+        Assert.Equal(PluginRowState.Installed, row.State);
+        Assert.True(row.UpdatesPaused);
+        Assert.Equal("Preview installed (updates paused)", row.StateText);
+        Assert.True(row.CanLaunch);
+        Assert.True(row.CanRemove);
+    }
+
+    [Fact]
+    public void StablePromotion_OffersUpdateToAnInstalledPreview()
+    {
+        var row = Build(
+            Entry(channel: ReleaseChannel.Stable),
+            Installed(channel: ReleaseChannel.Preview),
+            latest: "v1.0.17",
+            updatesPaused: true);
+
+        Assert.Equal(PluginRowState.UpdateAvailable, row.State);
+        Assert.False(row.UpdatesPaused);
     }
 }

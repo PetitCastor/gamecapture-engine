@@ -28,6 +28,7 @@ public sealed class PluginsForm : Form
     private readonly Button _launch;
     private readonly Button _stop;
     private readonly Button _close;
+    private readonly CheckBox _includePreviews;
     private readonly ProgressBar _progress;
     private readonly Label _status;
 
@@ -37,7 +38,9 @@ public sealed class PluginsForm : Form
     private IReadOnlyList<CatalogEntry> _catalog = [];
     private IReadOnlyList<PluginRow> _rows = [];
     private bool _busy;
-    private bool _sourceConfirmed;
+    private bool _stableSourceConfirmed;
+    private bool _previewSourceConfirmed;
+    private bool _changingPreviewSetting;
     private bool _closePending;
 
     public PluginsForm(PluginServices services)
@@ -75,6 +78,14 @@ public sealed class PluginsForm : Form
         _launch = MakeButton("Launch", OnLaunch);
         _stop = MakeButton("Stop", OnStop);
         _close = new Button { Text = "Close", DialogResult = DialogResult.OK, AutoSize = true, Margin = new Padding(3) };
+        _includePreviews = new CheckBox
+        {
+            AutoSize = true,
+            Margin = new Padding(3, 0, 3, 3),
+            Text = "Include preview plugins (may be unstable)",
+            Checked = _services.Settings.IncludePreviews,
+        };
+        _includePreviews.CheckedChanged += async (_, _) => await ChangePreviewSettingAsync();
 
         _progress = new ProgressBar { Width = 220, Height = 16, Visible = false, Margin = new Padding(3, 6, 3, 3) };
         _status = new Label { AutoSize = true, Margin = new Padding(3, 8, 3, 3), Text = "Loading the plugin catalog…" };
@@ -105,10 +116,11 @@ public sealed class PluginsForm : Form
 
         var root = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Dock = DockStyle.Fill };
         root.Controls.Add(notice, 0, 0);
-        root.Controls.Add(_list, 0, 1);
-        root.Controls.Add(actions, 0, 2);
-        root.Controls.Add(statusRow, 0, 3);
-        root.Controls.Add(closeRow, 0, 4);
+        root.Controls.Add(_includePreviews, 0, 1);
+        root.Controls.Add(_list, 0, 2);
+        root.Controls.Add(actions, 0, 3);
+        root.Controls.Add(statusRow, 0, 4);
+        root.Controls.Add(closeRow, 0, 5);
         Controls.Add(root);
 
         AcceptButton = _close;
@@ -194,7 +206,50 @@ public sealed class PluginsForm : Form
         try
         {
             SetBusy(true);
-            _catalog = await _services.Installer.FetchCatalogAsync(_work.Token);
+            _latestVersions.Clear();
+            var stable = await _services.Installer.FetchCatalogAsync(_work.Token);
+            var catalog = stable.ToList();
+            var previewError = "";
+            if (_services.Settings.IncludePreviews)
+            {
+                try
+                {
+                    var previews = await _services.Installer.FetchPreviewCatalogAsync(_work.Token);
+                    var stableIds = stable.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+                    if (previews.Any(entry => stableIds.Contains(entry.Id)))
+                        throw new InvalidOperationException("The preview catalog duplicates a stable plugin id.");
+
+                    catalog.AddRange(previews);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+                {
+                    previewError = $"Preview catalog unavailable: {ex.Message}";
+                }
+                catch (OperationCanceledException ex) when (!_work.IsCancellationRequested)
+                {
+                    previewError = $"Preview catalog unavailable: {ex.Message}";
+                }
+            }
+
+            var catalogIds = catalog.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var installed in _services.Installer.State.Entries.Values)
+            {
+                if (catalogIds.Contains(installed.Id))
+                    continue;
+
+                // Keep any catalog-orphaned install manageable. Legacy state predates DownloadUrl;
+                // reconstruct its immutable release path from the stored tag rather than hiding it.
+                var url = string.IsNullOrWhiteSpace(installed.DownloadUrl)
+                    ? $"https://github.com/PetitCastor/gamecapture-plugins/releases/download/{Uri.EscapeDataString(installed.Version)}/{Uri.EscapeDataString(installed.Name)}-win-x64.zip"
+                    : installed.DownloadUrl;
+                var description = installed.Channel == ReleaseChannel.Preview
+                    ? "Preview release; updates are paused."
+                    : "Installed plugin no longer appears in the stable catalog.";
+                catalog.Add(new CatalogEntry(installed.Id, installed.Name, description, url, installed.Channel));
+                catalogIds.Add(installed.Id);
+            }
+
+            _catalog = catalog;
             Rebuild();
 
             // Version probes are one HEAD each and only decide whether a row says "Update available",
@@ -203,6 +258,8 @@ public sealed class PluginsForm : Form
             foreach (var entry in _catalog)
             {
                 _work.Token.ThrowIfCancellationRequested();
+                if (entry.Channel == ReleaseChannel.Preview && !_services.Settings.IncludePreviews)
+                    continue;
                 try
                 {
                     var version = await _services.Installer.ResolveLatestVersionAsync(entry, _work.Token);
@@ -215,7 +272,11 @@ public sealed class PluginsForm : Form
                 }
             }
 
-            Report($"{_catalog.Count} plugin(s) in the catalog.", error: false);
+            Report(
+                previewError.Length > 0
+                    ? $"{_catalog.Count} plugin(s) available. {previewError}"
+                    : $"{_catalog.Count} plugin(s) in the catalog.",
+                error: previewError.Length > 0);
         }
         catch (OperationCanceledException)
         {
@@ -233,7 +294,7 @@ public sealed class PluginsForm : Form
 
     private async Task OnInstall(PluginRow row)
     {
-        if (!ConfirmSource())
+        if (!ConfirmSource(row.Entry.Channel))
             return;
 
         _progress.Visible = true;
@@ -284,21 +345,32 @@ public sealed class PluginsForm : Form
 
     // Named once, before the first download of the session, so "install" is never a one-click action
     // whose source the user was never shown.
-    private bool ConfirmSource()
+    private bool ConfirmSource(ReleaseChannel channel)
     {
-        if (_sourceConfirmed)
+        if (channel == ReleaseChannel.Stable && _stableSourceConfirmed)
+            return true;
+        if (channel == ReleaseChannel.Preview && _previewSourceConfirmed)
             return true;
 
+        var previewWarning = channel == ReleaseChannel.Preview
+            ? "\n\nThis is a preview release. It may be incomplete or change incompatibly."
+            : "";
         var confirm = MessageBox.Show(
             this,
             "Plugins are downloaded from github.com/PetitCastor/gamecapture-plugins and are not "
-            + "code-signed. They run as separate processes with your user's permissions.\n\nContinue?",
+            + "code-signed. They run as separate processes with your user's permissions."
+            + previewWarning
+            + "\n\nContinue?",
             "GameCapture",
             MessageBoxButtons.OKCancel,
             MessageBoxIcon.Information);
 
-        _sourceConfirmed = confirm == DialogResult.OK;
-        return _sourceConfirmed;
+        if (channel == ReleaseChannel.Preview)
+            _previewSourceConfirmed = confirm == DialogResult.OK;
+        else
+            _stableSourceConfirmed = confirm == DialogResult.OK;
+
+        return confirm == DialogResult.OK;
     }
 
     private PluginRow? SelectedRow()
@@ -311,7 +383,8 @@ public sealed class PluginsForm : Form
             _catalog,
             _services.Installer.State.Entries,
             _services.Launcher.RunningIds,
-            _latestVersions);
+            _latestVersions,
+            PausedPreviewIds());
 
         _list.BeginUpdate();
         _list.Items.Clear();
@@ -333,7 +406,7 @@ public sealed class PluginsForm : Form
     {
         var row = SelectedRow();
         _install.Text = row?.InstallActionText ?? "Install";
-        _install.Enabled = !_busy && row is not null && (row.CanInstall || row.CanReinstall);
+        _install.Enabled = !_busy && row is not null && !row.UpdatesPaused && (row.CanInstall || row.CanReinstall);
         _remove.Enabled = !_busy && row is { CanRemove: true };
         _launch.Enabled = !_busy && row is { CanLaunch: true };
         _stop.Enabled = !_busy && row is { CanStop: true };
@@ -343,6 +416,7 @@ public sealed class PluginsForm : Form
     {
         _busy = busy;
         _list.Enabled = !busy;
+        _includePreviews.Enabled = !busy;
         _close.Enabled = !busy;
         UseWaitCursor = busy;
         if (!busy)
@@ -354,5 +428,40 @@ public sealed class PluginsForm : Form
     {
         _status.Text = message;
         _status.ForeColor = error ? Color.Firebrick : SystemColors.ControlText;
+    }
+
+    private IReadOnlyCollection<string> PausedPreviewIds()
+        => !_services.Settings.IncludePreviews
+            ? _services.Installer.State.Entries.Values
+                .Where(installed => installed.Channel == ReleaseChannel.Preview)
+                .Select(installed => installed.Id)
+                .ToHashSet(StringComparer.Ordinal)
+            : [];
+
+    private async Task ChangePreviewSettingAsync()
+    {
+        if (!IsHandleCreated || _busy || _changingPreviewSetting)
+            return;
+
+        try
+        {
+            _services.Settings.IncludePreviews = _includePreviews.Checked;
+            _services.Settings.Save();
+            await LoadCatalogAsync();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _services.Settings.IncludePreviews = !_includePreviews.Checked;
+            _changingPreviewSetting = true;
+            try
+            {
+                _includePreviews.Checked = _services.Settings.IncludePreviews;
+            }
+            finally
+            {
+                _changingPreviewSetting = false;
+            }
+            Report($"Could not save preview preference: {ex.Message}", error: true);
+        }
     }
 }

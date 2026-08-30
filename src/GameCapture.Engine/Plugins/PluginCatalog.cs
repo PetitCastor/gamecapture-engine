@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace GameCapture.Engine.Plugins;
 
@@ -26,8 +27,15 @@ public static class PluginCatalog
     /// an arbitrary catalog would hand an attacker the plugin list and, through it, the install
     /// prompt — and the host allowlist below would be the only thing left standing.
     /// </summary>
-    public const string CatalogUrl =
+    public const string StableCatalogUrl =
         "https://raw.githubusercontent.com/PetitCastor/gamecapture-plugins/master/plugins.json";
+
+    /// <summary>Opt-in catalog that older engines never request.</summary>
+    public const string PreviewCatalogUrl =
+        "https://raw.githubusercontent.com/PetitCastor/gamecapture-plugins/master/plugins.preview.json";
+
+    /// <summary>Backward-compatible name for the stable catalog.</summary>
+    public const string CatalogUrl = StableCatalogUrl;
 
     private const string CatalogHost = "raw.githubusercontent.com";
     private const string CatalogPathPrefix = "/PetitCastor/gamecapture-plugins/";
@@ -51,6 +59,7 @@ public static class PluginCatalog
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     /// <summary>
@@ -91,14 +100,39 @@ public static class PluginCatalog
         return true;
     }
 
+    /// <summary>Parses one channel's catalog and rejects entries declared for another channel.</summary>
+    public static bool TryParse(
+        string json,
+        ReleaseChannel expectedChannel,
+        out IReadOnlyList<CatalogEntry> entries,
+        out string error)
+    {
+        if (!TryParse(json, out entries, out error))
+            return false;
+
+        if (entries.Any(entry => entry.Channel != expectedChannel))
+        {
+            entries = [];
+            error = $"The {expectedChannel.ToString().ToLowerInvariant()} plugin catalog contains an entry for another channel.";
+            return false;
+        }
+
+        return true;
+    }
+
     /// <summary>Whether <paramref name="url"/> is the catalog document itself.</summary>
     public static bool IsCatalogUrl(string url)
         => Uri.TryCreate(url, UriKind.Absolute, out var uri)
-           && IsOn(uri, CatalogHost)
-           && uri.AbsolutePath.StartsWith(CatalogPathPrefix, StringComparison.Ordinal);
+           && (IsStableCatalogUri(uri) || IsPreviewCatalogUri(uri));
 
     /// <inheritdoc cref="IsCatalogUrl(string)"/>
     public static bool IsCatalogUri(Uri uri) => IsCatalogUrl(uri.AbsoluteUri);
+
+    /// <summary>Whether <paramref name="uri"/> is exactly the stable catalog URL.</summary>
+    public static bool IsStableCatalogUri(Uri uri) => IsExactCatalogUri(uri, StableCatalogUrl);
+
+    /// <summary>Whether <paramref name="uri"/> is exactly the opt-in preview catalog URL.</summary>
+    public static bool IsPreviewCatalogUri(Uri uri) => IsExactCatalogUri(uri, PreviewCatalogUrl);
 
     /// <summary>
     /// Whether a download may <em>start</em> at <paramref name="url"/>. This is the rule applied to a
@@ -127,6 +161,12 @@ public static class PluginCatalog
         => uri.Scheme == Uri.UriSchemeHttps
            && uri.IsDefaultPort
            && string.Equals(uri.Host, host, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsExactCatalogUri(Uri uri, string expected)
+        => Uri.TryCreate(expected, UriKind.Absolute, out var expectedUri)
+           && IsOn(uri, CatalogHost)
+           && uri.AbsolutePath.StartsWith(CatalogPathPrefix, StringComparison.Ordinal)
+           && Uri.Compare(uri, expectedUri, UriComponents.HttpRequestUrl, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
 
     /// <summary>
     /// Whether a catalog id is safe to use as a directory name. Restrictive on purpose: the id comes

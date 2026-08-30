@@ -9,12 +9,14 @@ namespace GameCapture.Engine.Plugins;
 /// <param name="InstalledVersion">Release tag on disk, or empty when not installed.</param>
 /// <param name="LatestVersion">Latest release tag, or empty when the probe did not resolve one.</param>
 /// <param name="IsRunning">Whether this engine launched the plugin and its process is still alive.</param>
+/// <param name="UpdatesPaused">Whether a retained preview is intentionally excluded from preview updates.</param>
 public sealed record PluginRow(
     CatalogEntry Entry,
     PluginRowState State,
     string InstalledVersion,
     string LatestVersion,
-    bool IsRunning)
+    bool IsRunning,
+    bool UpdatesPaused)
 {
     /// <summary>Catalog id, the key everything else is addressed by.</summary>
     public string Id => Entry.Id;
@@ -26,6 +28,12 @@ public sealed record PluginRow(
     public string StateText => State switch
     {
         PluginRowState.Blocked => "Blocked (untrusted source)",
+        _ when UpdatesPaused && IsRunning => "Running preview (updates paused)",
+        _ when UpdatesPaused => "Preview installed (updates paused)",
+        PluginRowState.NotInstalled when Entry.Channel == ReleaseChannel.Preview => "Preview (not installed)",
+        PluginRowState.UpdateAvailable when Entry.Channel == ReleaseChannel.Preview => $"Preview update available ({InstalledVersion} → {LatestVersion})",
+        PluginRowState.Installed when Entry.Channel == ReleaseChannel.Preview && IsRunning => $"Running preview ({InstalledVersion})",
+        PluginRowState.Installed when Entry.Channel == ReleaseChannel.Preview => $"Preview installed ({InstalledVersion})",
         PluginRowState.NotInstalled => "Not installed",
         PluginRowState.UpdateAvailable => $"Update available ({InstalledVersion} → {LatestVersion})",
         _ when IsRunning => $"Running ({InstalledVersion})",
