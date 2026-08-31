@@ -24,6 +24,7 @@ internal static class EngineConfigSeed
     private static readonly (string Key, int AddedIn, JsonNode Default)[] Entries =
     [
         ("theme", 1, JsonValue.Create("system")!),
+        ("closeToTrayNoticeShown", 2, JsonValue.Create(false)!),
     ];
 
     private static readonly int CurrentVersion = Entries.Length == 0 ? 0 : Entries.Max(entry => entry.AddedIn);

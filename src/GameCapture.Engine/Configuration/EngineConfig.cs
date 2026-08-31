@@ -57,6 +57,13 @@ public sealed class EngineConfig
     [JsonConverter(typeof(EngineThemeJsonConverter))]
     public EngineTheme Theme { get; set; } = EngineTheme.System;
 
+    /// <summary>
+    /// Whether the "GameCapture is still capturing…" balloon (TASK-UI-04) has ever been shown for
+    /// this install. Set once, the first time the main window is closed to tray, and never again —
+    /// there is no UI to un-set it, by design.
+    /// </summary>
+    public bool CloseToTrayNoticeShown { get; set; }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
