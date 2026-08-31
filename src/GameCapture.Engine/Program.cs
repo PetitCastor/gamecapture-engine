@@ -17,8 +17,9 @@ VelopackApp.Build().Run();
 // before anything else: no console, no banner, no pipe bind. A second launch signals the running
 // instance (which brings its window forward) and exits 0 here with no console noise, instead of
 // falling through to the pipe-collision path further down that used to read as a broken app.
-using var singleInstance = SingleInstance.Acquire();
-if (singleInstance is null)
+var requiresSingleInstance = SingleInstance.IsRequiredFor(args);
+using var singleInstance = requiresSingleInstance ? SingleInstance.Acquire() : null;
+if (requiresSingleInstance && singleInstance is null)
     return 0;
 
 ConsoleWindowVisibility.EnsureDebugConsole();

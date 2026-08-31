@@ -1,3 +1,6 @@
+using System.IO.MemoryMappedFiles;
+using System.Runtime.InteropServices;
+
 namespace GameCapture.Engine.Shell;
 
 /// <summary>
@@ -18,13 +21,15 @@ public sealed class SingleInstance : IDisposable
 {
     private readonly Mutex _mutex;
     private readonly EventWaitHandle _signalEvent;
+    private readonly MemoryMappedFile _ownerProcess;
     private RegisteredWaitHandle? _registeredWait;
     private bool _disposed;
 
-    private SingleInstance(Mutex mutex, EventWaitHandle signalEvent)
+    private SingleInstance(Mutex mutex, EventWaitHandle signalEvent, MemoryMappedFile ownerProcess)
     {
         _mutex = mutex;
         _signalEvent = signalEvent;
+        _ownerProcess = ownerProcess;
     }
 
     /// <summary>
@@ -45,17 +50,27 @@ public sealed class SingleInstance : IDisposable
     /// tests pass a unique value so parallel runs cannot collide with each other or with a real engine
     /// that happens to be running on the same machine.</param>
     public static SingleInstance? Acquire(string scope = "GameCapture.Engine")
+        => Acquire(scope, GrantForegroundPermission);
+
+    internal static SingleInstance? Acquire(string scope, Action<int> grantForegroundPermission)
     {
+        ArgumentNullException.ThrowIfNull(grantForegroundPermission);
+
         var mutex = new Mutex(initiallyOwned: true, MutexName(scope), out var createdNew);
         if (!createdNew)
         {
             mutex.Dispose();
+            GrantForegroundPermissionToOwner(scope, grantForegroundPermission);
             SignalRunningInstance(scope);
             return null;
         }
 
         var signalEvent = new EventWaitHandle(false, EventResetMode.AutoReset, EventName(scope));
-        var instance = new SingleInstance(mutex, signalEvent);
+        var ownerProcess = MemoryMappedFile.CreateOrOpen(OwnerProcessName(scope), sizeof(int));
+        using (var ownerProcessView = ownerProcess.CreateViewAccessor(0, sizeof(int), MemoryMappedFileAccess.Write))
+            ownerProcessView.Write(0, Environment.ProcessId);
+
+        var instance = new SingleInstance(mutex, signalEvent, ownerProcess);
         instance._registeredWait = ThreadPool.RegisterWaitForSingleObject(
             signalEvent,
             (state, _) => ((SingleInstance)state!).Signaled?.Invoke(),
@@ -64,6 +79,41 @@ public sealed class SingleInstance : IDisposable
             executeOnlyOnce: false);
         return instance;
     }
+
+    /// <summary>
+    /// Whether this launch should participate in the desktop singleton. Replay and video processes
+    /// are headless tools whose generated pipe names deliberately allow concurrent runs.
+    /// </summary>
+    internal static bool IsRequiredFor(IReadOnlyList<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+
+        return !arguments.Any(argument =>
+            argument.Equals("--replay", StringComparison.OrdinalIgnoreCase)
+            || argument.Equals("--video", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void GrantForegroundPermissionToOwner(string scope, Action<int> grantForegroundPermission)
+    {
+        try
+        {
+            using var ownerProcess = MemoryMappedFile.OpenExisting(
+                OwnerProcessName(scope), MemoryMappedFileRights.Read);
+            using var ownerProcessView = ownerProcess.CreateViewAccessor(
+                0, sizeof(int), MemoryMappedFileAccess.Read);
+            var processId = ownerProcessView.ReadInt32(0);
+            if (processId > 0)
+                grantForegroundPermission(processId);
+        }
+        catch (FileNotFoundException)
+        {
+            // The first instance can still be between claiming the mutex and publishing its PID.
+            // Signalling remains useful: its window will handle the event as soon as it is ready.
+        }
+    }
+
+    private static void GrantForegroundPermission(int processId)
+        => _ = AllowSetForegroundWindow((uint)processId);
 
     private static void SignalRunningInstance(string scope)
     {
@@ -84,6 +134,12 @@ public sealed class SingleInstance : IDisposable
 
     private static string EventName(string scope) => $@"Local\{scope}.SingleInstance.Event";
 
+    private static string OwnerProcessName(string scope) => $@"Local\{scope}.SingleInstance.Owner";
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AllowSetForegroundWindow(uint processId);
+
     public void Dispose()
     {
         if (_disposed)
@@ -92,6 +148,7 @@ public sealed class SingleInstance : IDisposable
 
         _registeredWait?.Unregister(null);
         _signalEvent.Dispose();
+        _ownerProcess.Dispose();
 
         // No ReleaseMutex: this handle is held for the process's whole lifetime by design, and
         // Program.cs's top-level async Main resumes each await on whatever thread-pool thread the

@@ -18,15 +18,23 @@ public class CloseToTrayDecisionTests
 
     [Fact]
     public void UserClosing_CloseToTrayDisabled_ReallyExits()
-        => Assert.False(CloseToTrayDecision.ShouldHideInsteadOfClose(
+    {
+        Assert.False(CloseToTrayDecision.ShouldHideInsteadOfClose(
             exiting: false, CloseReason.UserClosing, closeToTrayEnabled: false));
+        Assert.True(CloseToTrayDecision.ShouldRequestExit(
+            exiting: false, CloseReason.UserClosing, closeToTrayEnabled: false));
+    }
 
     [Fact]
     public void AlreadyExiting_NeverHidesEvenWithCloseToTrayEnabled()
         // A real exit in progress (tray Exit, POST /api/exit) racing the user also clicking X must
         // not get turned back into a hidden window.
-        => Assert.False(CloseToTrayDecision.ShouldHideInsteadOfClose(
+    {
+        Assert.False(CloseToTrayDecision.ShouldHideInsteadOfClose(
             exiting: true, CloseReason.UserClosing, closeToTrayEnabled: true));
+        Assert.False(CloseToTrayDecision.ShouldRequestExit(
+            exiting: true, CloseReason.UserClosing, closeToTrayEnabled: true));
+    }
 
     [Theory]
     [InlineData(CloseReason.WindowsShutDown)]
@@ -36,6 +44,10 @@ public class CloseToTrayDecisionTests
     public void NonUserClosingReasons_NeverHide(CloseReason reason)
         // Only the window's own X button is eligible to hide; every other reason must be let through
         // unconditionally, or the process could fail to exit when Windows asks it to.
-        => Assert.False(CloseToTrayDecision.ShouldHideInsteadOfClose(
+    {
+        Assert.False(CloseToTrayDecision.ShouldHideInsteadOfClose(
             exiting: false, reason, closeToTrayEnabled: true));
+        Assert.True(CloseToTrayDecision.ShouldRequestExit(
+            exiting: false, reason, closeToTrayEnabled: true));
+    }
 }

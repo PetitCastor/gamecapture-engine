@@ -40,6 +40,34 @@ public sealed class SingleInstanceTests
     }
 
     [Fact]
+    public void Acquire_SecondCall_GrantsForegroundPermissionToTheFirstProcess()
+    {
+        var scope = UniqueScope();
+        using var first = SingleInstance.Acquire(scope);
+        Assert.NotNull(first);
+        int? grantedProcessId = null;
+
+        var second = SingleInstance.Acquire(scope, processId => grantedProcessId = processId);
+
+        Assert.Null(second);
+        Assert.Equal(Environment.ProcessId, grantedProcessId);
+    }
+
+    [Theory]
+    [InlineData("--replay")]
+    [InlineData("--REPLAY")]
+    [InlineData("--video")]
+    public void IsRequiredFor_HeadlessLaunch_ReturnsFalse(string sourceArgument)
+        => Assert.False(SingleInstance.IsRequiredFor([sourceArgument, "source-path"]));
+
+    [Theory]
+    [InlineData()]
+    [InlineData("--verbose")]
+    [InlineData("--pipe", "custom-pipe")]
+    public void IsRequiredFor_InteractiveLaunch_ReturnsTrue(params string[] arguments)
+        => Assert.True(SingleInstance.IsRequiredFor(arguments));
+
+    [Fact]
     public void Acquire_AfterFirstIsDisposed_CanClaimTheSameScopeAgain()
     {
         var scope = UniqueScope();

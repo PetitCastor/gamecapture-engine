@@ -106,10 +106,11 @@ internal sealed class MainWindow : Form
             return;
         }
 
-        if (!_exiting && e.CloseReason == CloseReason.UserClosing)
+        if (CloseToTrayDecision.ShouldRequestExit(_exiting, e.CloseReason, _closeToTrayEnabled))
         {
-            // No tray icon to fall back to (trayEnabled is off): there is no way back to a hidden
-            // window, so closing the window really does exit the engine.
+            // Every accepted close must stop capture, including Windows shutdown and Task Manager.
+            // Closing the form only ends this dedicated UI thread; Program independently awaits the
+            // engine cancellation token and otherwise keeps the process alive.
             _exiting = true;
             _onExitRequested();
         }

@@ -22,4 +22,11 @@ internal static class CloseToTrayDecision
     /// (<c>trayEnabled: false</c>): with no way back to a hidden window, X really does exit.</param>
     public static bool ShouldHideInsteadOfClose(bool exiting, CloseReason reason, bool closeToTrayEnabled)
         => !exiting && reason == CloseReason.UserClosing && closeToTrayEnabled;
+
+    /// <summary>
+    /// Whether an accepted close must also stop the engine. A close that was converted into a hide is
+    /// not an exit, and a real exit already in progress has already requested cancellation.
+    /// </summary>
+    public static bool ShouldRequestExit(bool exiting, CloseReason reason, bool closeToTrayEnabled)
+        => !exiting && !ShouldHideInsteadOfClose(exiting, reason, closeToTrayEnabled);
 }
