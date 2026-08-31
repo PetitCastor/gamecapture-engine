@@ -108,7 +108,9 @@ internal sealed class EngineDesktopLifetime : IDisposable
             _config.PipeName,
             _config.MetricsEnabled,
             Math.Clamp(_config.MetricsIntervalMs, 250, 60_000),
-            _config.TrayEnabled);
+            _config.TrayEnabled,
+            _sourceSelection.CurrentMonitorIndex,
+            _config.Theme);
 
         // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
         // headless run has nobody to click Install. None of installer, launcher, or manager settings
@@ -283,9 +285,20 @@ internal sealed class EngineDesktopLifetime : IDisposable
             changes["metricsIntervalMs"] = settings.MetricsIntervalMs;
         if (settings.TrayEnabled != currentSettings.TrayEnabled)
             changes["trayEnabled"] = settings.TrayEnabled;
+        // Neither field can make the relaunched process fail to start (unlike OCR language, hotkey
+        // and pipe name above), so no fallback validation is needed — just patch them through.
+        if (settings.MonitorIndex != currentSettings.MonitorIndex)
+            changes["monitorIndex"] = settings.MonitorIndex;
+        if (settings.Theme != currentSettings.Theme)
+            changes["theme"] = settings.Theme.ToString().ToLowerInvariant();
 
-        if (changes.Count > 0)
+        if (changes.Count == 0)
+            return;
+
+        if (SettingsRestartDecision.IsRestartRequired(changes))
             PersistAndRestart(changes);
+        else
+            Persist(changes);
     }
 
     // Probes usability the same way the OS ultimately will: by actually creating and immediately
@@ -309,9 +322,21 @@ internal sealed class EngineDesktopLifetime : IDisposable
 
     private void PersistAndRestart(IReadOnlyDictionary<string, object> changes)
     {
+        if (!Persist(changes))
+            return;
+
+        Volatile.Write(ref _restartRequested, true);
+        _shutdown.Cancel();
+    }
+
+    // Every field but theme is bound at startup and needs the restart above to take effect; theme
+    // does not, so its own save path stops here.
+    private bool Persist(IReadOnlyDictionary<string, object> changes)
+    {
         try
         {
             File.WriteAllText(_configPath, ConfigPatch.Apply(File.ReadAllText(_configPath), changes));
+            return true;
         }
         catch (Exception ex)
         {
@@ -320,10 +345,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
                 "GameCapture",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
-            return;
+            return false;
         }
-
-        Volatile.Write(ref _restartRequested, true);
-        _shutdown.Cancel();
     }
 }

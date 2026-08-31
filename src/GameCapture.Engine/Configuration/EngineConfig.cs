@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using GameCapture.Contracts;
+using GameCapture.Engine.Tray;
 
 namespace GameCapture.Engine;
 
@@ -47,6 +49,14 @@ public sealed class EngineConfig
     /// </summary>
     public bool TrayEnabled { get; set; } = true;
 
+    /// <summary>
+    /// UI theme for the WebView2 main window (TASK-UI-05 applies it live). Serialized as
+    /// <c>"system"</c>/<c>"light"</c>/<c>"dark"</c>, case-insensitively; an absent or unrecognized
+    /// value reads as <see cref="EngineTheme.System"/> rather than failing config load.
+    /// </summary>
+    [JsonConverter(typeof(EngineThemeJsonConverter))]
+    public EngineTheme Theme { get; set; } = EngineTheme.System;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -63,7 +73,9 @@ public sealed class EngineConfig
 
     /// <summary>
     /// Loads the config, writing a defaults file on first run so the settings are discoverable
-    /// without documentation. Same contract as the monolith's ProbeConfig.Load.
+    /// without documentation. Same contract as the monolith's ProbeConfig.Load. On every run it also
+    /// offers keys added since the file was last stamped (see <see cref="EngineConfigSeed"/>), so a
+    /// config predating e.g. <see cref="Theme"/> still gets it written where a user can find it.
     /// </summary>
     public static EngineConfig Load(string path)
     {
@@ -72,17 +84,75 @@ public sealed class EngineConfig
         {
             config = new EngineConfig();
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-            File.WriteAllText(path, JsonSerializer.Serialize(config, JsonOptions));
+            var seeded = EngineConfigSeed.ApplyNewDefaults(JsonSerializer.Serialize(config, JsonOptions));
+            WriteAtomic(path, seeded);
         }
         else
         {
-            config = JsonSerializer.Deserialize<EngineConfig>(File.ReadAllText(path), JsonOptions)
-                     ?? new EngineConfig();
+            var text = File.ReadAllText(path);
+            var seeded = EngineConfigSeed.ApplyNewDefaults(text);
+            if (seeded != text)
+            {
+                try
+                {
+                    WriteAtomic(path, seeded);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Best-effort: the new default still applies for this run from `seeded` below,
+                    // and the next successful load offers it again. A read-only file must not stop
+                    // the engine from starting with the config it already successfully read.
+                }
+            }
+
+            // A read racing another instance's non-atomic write used to be the failure mode here;
+            // WriteAtomic above closes that window, but a hand-edited file can still be malformed,
+            // and JsonException on its own does not say which file — wrap it the way the other
+            // startup-fatal errors in this project name their own cause.
+            try
+            {
+                config = JsonSerializer.Deserialize<EngineConfig>(seeded, JsonOptions)
+                         ?? new EngineConfig();
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException($"Config file '{path}' is not valid JSON: {ex.Message}", ex);
+            }
         }
 
         if (!Path.IsPathRooted(config.OutputDir))
             config.OutputDir = Path.GetFullPath(config.OutputDir, Path.GetDirectoryName(path)!);
 
         return config;
+    }
+
+    /// <summary>
+    /// Writes through a temporary file in the same directory, then replaces. A plain
+    /// <c>WriteAllText</c> truncates the target before writing; a crash, kill, or full disk mid-write
+    /// would leave an existing user config empty or half-written instead of merely stale. This is a
+    /// deliberate parallel of the SDK's <c>ConfigSeed.Write</c> — the engine does not reference
+    /// <c>GameCapture.Sdk</c> (see this project's csproj), so the two cannot share the method.
+    /// </summary>
+    private static void WriteAtomic(string path, string content)
+    {
+        var temp = path + ".tmp";
+        try
+        {
+            File.WriteAllText(temp, content);
+            File.Move(temp, path, overwrite: true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (IOException)
+            {
+                // Losing the temp file matters less than the exception on its way up.
+            }
+
+            throw;
+        }
     }
 }

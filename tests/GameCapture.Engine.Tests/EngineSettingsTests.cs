@@ -11,7 +11,7 @@ namespace GameCapture.Engine.Tests;
 public class EngineSettingsTests
 {
     private static EngineSettings Baseline() => new(
-        @"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true);
+        @"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true, 0, EngineTheme.System);
 
     [Fact]
     public void Same_values_are_equal()
@@ -22,14 +22,16 @@ public class EngineSettingsTests
     }
 
     [Theory]
-    [InlineData(@"C:\other", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true)]
-    [InlineData(@"C:\dumps", "fr-FR", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true)]
-    [InlineData(@"C:\dumps", "en-US", 750, "Ctrl+Shift+F12", "gamecapture", true, 1000, true)]
-    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Alt+F12", "gamecapture", true, 1000, true)]
-    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "other-pipe", true, 1000, true)]
-    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", false, 1000, true)]
-    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 2000, true)]
-    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, false)]
+    [InlineData(@"C:\other", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "fr-FR", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 750, "Ctrl+Shift+F12", "gamecapture", true, 1000, true, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Alt+F12", "gamecapture", true, 1000, true, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "other-pipe", true, 1000, true, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", false, 1000, true, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 2000, true, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, false, 0, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true, 1, EngineTheme.System)]
+    [InlineData(@"C:\dumps", "en-US", 500, "Ctrl+Shift+F12", "gamecapture", true, 1000, true, 0, EngineTheme.Dark)]
     public void Any_differing_field_is_unequal(
         string outputDir,
         string ocr,
@@ -38,9 +40,12 @@ public class EngineSettingsTests
         string pipeName,
         bool metricsEnabled,
         int metricsIntervalMs,
-        bool trayEnabled)
+        bool trayEnabled,
+        int monitorIndex,
+        EngineTheme theme)
     {
         Assert.NotEqual(Baseline(), new EngineSettings(
-            outputDir, ocr, scan, hotkey, pipeName, metricsEnabled, metricsIntervalMs, trayEnabled));
+            outputDir, ocr, scan, hotkey, pipeName, metricsEnabled, metricsIntervalMs, trayEnabled,
+            monitorIndex, theme));
     }
 }
