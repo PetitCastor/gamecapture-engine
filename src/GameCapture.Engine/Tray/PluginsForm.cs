@@ -404,7 +404,7 @@ public sealed class PluginsForm : Form
     {
         var row = SelectedRow();
         _install.Text = row?.InstallActionText ?? "Install";
-        _install.Enabled = !_busy && row is not null && (row.CanInstall || row.CanReinstall);
+        _install.Enabled = !_busy && row is { CanInstall: true };
         _remove.Enabled = !_busy && row is { CanRemove: true };
         _launch.Enabled = !_busy && row is { CanLaunch: true };
         _stop.Enabled = !_busy && row is { CanStop: true };
