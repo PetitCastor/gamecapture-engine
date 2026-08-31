@@ -32,7 +32,9 @@ internal sealed class ControlApiEventHub : IDisposable
     private readonly EngineStatus _status;
     private readonly ControlApiState _state;
     private readonly bool _metricsEnabled;
+    private readonly ConsoleSink _sink;
     private readonly FrameRateTracker _fps = new();
+    private readonly TimeSpan _interval;
     private readonly Timer _timer;
     private PluginServices? _plugins;
     private Func<IReadOnlyList<PluginRow>>? _readPluginRows;
@@ -42,11 +44,13 @@ internal sealed class ControlApiEventHub : IDisposable
     private string _lastStatusJson;
     private bool _disposed;
 
-    public ControlApiEventHub(EngineStatus status, ControlApiState state, bool metricsEnabled, TimeSpan interval)
+    public ControlApiEventHub(EngineStatus status, ControlApiState state, bool metricsEnabled, ConsoleSink sink, TimeSpan interval)
     {
         _status = status;
         _state = state;
         _metricsEnabled = metricsEnabled;
+        _sink = sink;
+        _interval = interval;
 
         // Seeded synchronously so /api/status and a socket's greeting always have something to
         // return from the moment the server starts, rather than waiting out the first tick.
@@ -54,7 +58,10 @@ internal sealed class ControlApiEventHub : IDisposable
         _current = BuildView();
         _lastStatusJson = JsonSerializer.Serialize(_current, JsonOptions);
 
-        _timer = new Timer(_ => Poll(), null, interval, interval);
+        // One-shot re-arming timer, the same idiom as MetricsReporter: the next poll is only
+        // scheduled once the current one finishes, so a slow sample (or a broadcast fan-out growing
+        // with the connection count) can never overlap the next tick.
+        _timer = new Timer(_ => Poll(), null, interval, Timeout.InfiniteTimeSpan);
     }
 
     /// <summary>Latest computed view. Never null: seeded at construction, refreshed on the poll timer.</summary>
@@ -155,15 +162,24 @@ internal sealed class ControlApiEventHub : IDisposable
             _current = view;
 
             var json = JsonSerializer.Serialize(view, JsonOptions);
-            if (json == _lastStatusJson)
-                return;
-
-            _lastStatusJson = json;
-            _ = BroadcastRawAsync("status", json);
+            if (json != _lastStatusJson)
+            {
+                _lastStatusJson = json;
+                _ = BroadcastRawAsync("status", json);
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // A bad sample must never take the poll timer down; the next tick tries again.
+            // A bad sample must never take the poll timer down; the next tick tries again. Logged
+            // (unlike a bare catch) so a persistently failing sample is visible instead of the
+            // socket just going quiet with no clue why.
+            _sink.WriteLine($"[control-api] poll failed: {ex.Message}");
+        }
+
+        lock (_timer)
+        {
+            if (!_disposed)
+                _timer.Change(_interval, Timeout.InfiniteTimeSpan);
         }
     }
 
@@ -233,9 +249,12 @@ internal sealed class ControlApiEventHub : IDisposable
     /// </summary>
     public void Dispose()
     {
-        if (_disposed)
-            return;
-        _disposed = true;
+        lock (_timer)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+        }
 
         SetPlugins(null, null);
 

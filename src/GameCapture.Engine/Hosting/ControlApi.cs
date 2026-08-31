@@ -30,10 +30,11 @@ internal static class ControlApi
         ControlApiState state,
         EngineStatus status,
         FrameSourceSelection? sourceSelection,
-        EngineConfig config)
+        EngineConfig config,
+        ConsoleSink sink)
     {
         var hub = new ControlApiEventHub(
-            status, state, config.MetricsEnabled,
+            status, state, config.MetricsEnabled, sink,
             TimeSpan.FromMilliseconds(Math.Max(250, config.MetricsIntervalMs)));
 
         // Torn down the instant shutdown begins so a live socket can never extend or block the gRPC

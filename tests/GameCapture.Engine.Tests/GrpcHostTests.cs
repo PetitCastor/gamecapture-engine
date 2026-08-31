@@ -39,7 +39,7 @@ public class GrpcHostTests
         var ocr = new OcrPipeline();
         using var scanLoop = new ScanLoop(source, ocr, registry, status, sink, config, verbose: false);
 
-        var app = GrpcHost.BuildGrpcHost(pipeName, status, registry, scanLoop, ocr, config);
+        var app = GrpcHost.BuildGrpcHost(pipeName, status, registry, scanLoop, ocr, config, sink);
         await app.StartAsync();
 
         try

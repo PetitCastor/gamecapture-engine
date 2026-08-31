@@ -51,6 +51,28 @@ public class ControlApiTests
     }
 
     [Fact]
+    public async Task Events_NoAuthorizationHeader_RejectsTheHandshake()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+
+        // The route middleware in ControlApi.Map gates the WebSocket upgrade the same way it gates
+        // every other /api/* route, but a routing-order regression (UseWebSockets or the auth
+        // middleware moved relative to the /api/events Map call) would only show up here, not in the
+        // /api/status tests above — this is a distinct code path through Kestrel's upgrade handling.
+        await Assert.ThrowsAsync<System.Net.WebSockets.WebSocketException>(
+            () => harness.ConnectEventsAsync(authorizationHeader: null));
+    }
+
+    [Fact]
+    public async Task Events_WrongToken_RejectsTheHandshake()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+
+        await Assert.ThrowsAsync<System.Net.WebSockets.WebSocketException>(
+            () => harness.ConnectEventsAsync("Bearer not-the-real-token"));
+    }
+
+    [Fact]
     public async Task Status_ReturnsTheTrayViewShape()
     {
         await using var harness = await ControlApiHarness.StartAsync();

@@ -39,6 +39,7 @@ internal static class GrpcHost
         ScanLoop scanLoop,
         OcrPipeline ocr,
         EngineConfig config,
+        ConsoleSink sink,
         FrameSourceSelection? sourceSelection = null,
         ControlApiToken? controlApiToken = null,
         ControlApiState? controlApiState = null)
@@ -69,7 +70,7 @@ internal static class GrpcHost
         app.MapGrpcService<CaptureGrpcService>();
 
         if (controlApiToken is not null)
-            ControlApi.Map(app, controlApiToken, controlApiState!, status, sourceSelection, config);
+            ControlApi.Map(app, controlApiToken, controlApiState!, status, sourceSelection, config, sink);
 
         return app;
     }

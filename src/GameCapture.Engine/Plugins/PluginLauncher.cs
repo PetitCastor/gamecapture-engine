@@ -26,22 +26,34 @@ public sealed class PluginLauncher : IDisposable
     {
         get
         {
+            List<string> ids;
+            bool pruned;
             lock (_gate)
             {
-                Prune();
-                return _running.Keys.ToList();
+                pruned = Prune();
+                ids = _running.Keys.ToList();
             }
+
+            if (pruned)
+                Changed?.Invoke();
+            return ids;
         }
     }
 
     /// <summary>Whether this engine has a live child process for <paramref name="id"/>.</summary>
     public bool IsRunning(string id)
     {
+        bool result;
+        bool pruned;
         lock (_gate)
         {
-            Prune();
-            return _running.ContainsKey(id);
+            pruned = Prune();
+            result = _running.ContainsKey(id);
         }
+
+        if (pruned)
+            Changed?.Invoke();
+        return result;
     }
 
     /// <summary>
@@ -51,57 +63,74 @@ public sealed class PluginLauncher : IDisposable
     /// deleted or moved behind the engine's back.</exception>
     public void Start(InstalledPlugin plugin)
     {
-        lock (_gate)
+        var pruned = false;
+        var started = false;
+        try
         {
-            Prune();
-            if (_running.ContainsKey(plugin.Id))
-                return;
-
-            if (!File.Exists(plugin.ExecutablePath))
-                throw new FileNotFoundException($"{plugin.Name} is not where it was installed. Reinstall it.", plugin.ExecutablePath);
-
-            var startInfo = new ProcessStartInfo
+            lock (_gate)
             {
-                FileName = plugin.ExecutablePath,
-                // The SDK reads a plugin's seeded config relative to its own base directory, so the
-                // working directory has to be the plugin folder rather than the engine's.
-                WorkingDirectory = Path.GetDirectoryName(plugin.ExecutablePath)!,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
+                pruned = Prune();
+                if (_running.ContainsKey(plugin.Id))
+                    return;
 
-            var process = Process.Start(startInfo)
-                          ?? throw new InvalidOperationException($"{plugin.Name} could not be started.");
-            _running[plugin.Id] = process;
-            Changed?.Invoke();
+                if (!File.Exists(plugin.ExecutablePath))
+                    throw new FileNotFoundException($"{plugin.Name} is not where it was installed. Reinstall it.", plugin.ExecutablePath);
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = plugin.ExecutablePath,
+                    // The SDK reads a plugin's seeded config relative to its own base directory, so the
+                    // working directory has to be the plugin folder rather than the engine's.
+                    WorkingDirectory = Path.GetDirectoryName(plugin.ExecutablePath)!,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+
+                var process = Process.Start(startInfo)
+                              ?? throw new InvalidOperationException($"{plugin.Name} could not be started.");
+                _running[plugin.Id] = process;
+                started = true;
+            }
+        }
+        finally
+        {
+            // Raised after the lock is released: this event reaches ControlApiEventHub, which
+            // broadcasts to WebSocket clients — a slow or stuck client must never add latency to
+            // every Start/Stop/Prune call across the process by holding this up under _gate.
+            if (pruned || started)
+                Changed?.Invoke();
         }
     }
 
     /// <summary>Stops a plugin if this engine started it. No-op otherwise.</summary>
     public void Stop(string id)
     {
+        bool stopped;
         lock (_gate)
         {
-            if (!_running.Remove(id, out var process))
-                return;
-
-            Terminate(process);
-            Changed?.Invoke();
+            stopped = _running.Remove(id, out var process);
+            if (stopped)
+                Terminate(process!);
         }
+
+        if (stopped)
+            Changed?.Invoke();
     }
 
     public void Dispose()
     {
+        bool changed;
         lock (_gate)
         {
             foreach (var process in _running.Values)
                 Terminate(process);
 
-            var changed = _running.Count > 0;
+            changed = _running.Count > 0;
             _running.Clear();
-            if (changed)
-                Changed?.Invoke();
         }
+
+        if (changed)
+            Changed?.Invoke();
     }
 
     // A plugin is a windowless console process with no shutdown channel of its own — the gRPC stream
@@ -128,9 +157,11 @@ public sealed class PluginLauncher : IDisposable
     }
 
     // Called under the lock. A plugin that exited on its own must stop counting as running, or its
-    // row would offer Stop forever and never offer Update.
-    private void Prune()
+    // row would offer Stop forever and never offer Update. Returns whether anything was pruned; the
+    // caller raises Changed once, after releasing the lock.
+    private bool Prune()
     {
+        var pruned = false;
         foreach (var (id, process) in _running.ToList())
         {
             if (!process.HasExited)
@@ -138,7 +169,9 @@ public sealed class PluginLauncher : IDisposable
 
             process.Dispose();
             _running.Remove(id);
-            Changed?.Invoke();
+            pruned = true;
         }
+
+        return pruned;
     }
 }

@@ -9,12 +9,17 @@ namespace GameCapture.Engine;
 /// <see cref="EngineDesktopLifetime.Start"/> constructs <see cref="TrayControls"/> and starts the
 /// metrics reporter — so the endpoints close over this box and read whatever it holds at request
 /// time instead of a value captured at map time. Reference assignment is atomic in .NET, so a route
-/// handler always sees either the old value or the new one, never a partial write.
+/// handler always sees either the old value or the new one, never a partial write; the backing
+/// fields are <c>volatile</c> so that value is also promptly visible, since a request thread never
+/// takes a lock with the tray/metrics thread that writes them.
 /// </summary>
 internal sealed class ControlApiState
 {
-    private TrayControls? _controls;
-    private MetricsSnapshot? _latestMetrics;
+    // volatile, not just reference-assignment atomicity: a request thread that never took a lock
+    // with the writer (SetControls/SetMetrics run on the tray/metrics thread) needs a memory barrier
+    // to see a fresh value promptly rather than a stale cached read.
+    private volatile TrayControls? _controls;
+    private volatile MetricsSnapshot? _latestMetrics;
 
     /// <summary>
     /// The tray's callback bundle, once <see cref="EngineDesktopLifetime.Start"/> has built it.

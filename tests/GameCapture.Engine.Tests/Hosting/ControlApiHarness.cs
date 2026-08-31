@@ -88,10 +88,19 @@ internal sealed class ControlApiHarness : IAsyncDisposable
         return client;
     }
 
-    public async Task<ClientWebSocket> ConnectEventsAsync()
+    public Task<ClientWebSocket> ConnectEventsAsync()
+        => ConnectEventsAsync($"Bearer {_engine.ControlApiToken!.Value}");
+
+    /// <summary>Attempts the <c>/api/events</c> handshake with the given raw <c>Authorization</c>
+    /// header value, or none at all when <paramref name="authorizationHeader"/> is null. Used by both
+    /// the happy path (a valid bearer token) and the rejection tests, which expect
+    /// <see cref="WebSocketException"/> out of <c>ConnectAsync</c> itself — the same auth gate that
+    /// protects every other <c>/api/*</c> route must also cover the upgrade.</summary>
+    public async Task<ClientWebSocket> ConnectEventsAsync(string? authorizationHeader)
     {
         var socket = new ClientWebSocket();
-        socket.Options.SetRequestHeader("Authorization", $"Bearer {_engine.ControlApiToken!.Value}");
+        if (authorizationHeader is not null)
+            socket.Options.SetRequestHeader("Authorization", authorizationHeader);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await socket.ConnectAsync(new Uri($"ws://127.0.0.1:{Port}/api/events"), timeout.Token);
         return socket;

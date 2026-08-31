@@ -82,7 +82,7 @@ internal sealed class EngineHost : IAsyncDisposable
         var controlApiState = enableControlApi ? new ControlApiState() : null;
 
         var app = GrpcHost.BuildGrpcHost(
-            pipeName, status, registry, scanLoop, ocr, config,
+            pipeName, status, registry, scanLoop, ocr, config, sink,
             sourceSelection, controlApiToken, controlApiState);
 
         return new EngineHost(app, source, status, registry, scanLoop, controlApiToken, controlApiState);
