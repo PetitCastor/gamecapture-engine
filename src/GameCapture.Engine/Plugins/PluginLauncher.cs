@@ -18,6 +18,9 @@ public sealed class PluginLauncher : IDisposable
     private readonly Lock _gate = new();
     private readonly Dictionary<string, Process> _running = new(StringComparer.Ordinal);
 
+    /// <summary>Raised after the running set changes.</summary>
+    public event Action? Changed;
+
     /// <summary>Ids with a live child process, after pruning any that have exited.</summary>
     public IReadOnlyCollection<string> RunningIds
     {
@@ -70,6 +73,7 @@ public sealed class PluginLauncher : IDisposable
             var process = Process.Start(startInfo)
                           ?? throw new InvalidOperationException($"{plugin.Name} could not be started.");
             _running[plugin.Id] = process;
+            Changed?.Invoke();
         }
     }
 
@@ -82,6 +86,7 @@ public sealed class PluginLauncher : IDisposable
                 return;
 
             Terminate(process);
+            Changed?.Invoke();
         }
     }
 
@@ -92,7 +97,10 @@ public sealed class PluginLauncher : IDisposable
             foreach (var process in _running.Values)
                 Terminate(process);
 
+            var changed = _running.Count > 0;
             _running.Clear();
+            if (changed)
+                Changed?.Invoke();
         }
     }
 
@@ -130,6 +138,7 @@ public sealed class PluginLauncher : IDisposable
 
             process.Dispose();
             _running.Remove(id);
+            Changed?.Invoke();
         }
     }
 }

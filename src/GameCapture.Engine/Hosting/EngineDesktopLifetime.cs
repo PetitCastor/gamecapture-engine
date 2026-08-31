@@ -95,7 +95,13 @@ internal sealed class EngineDesktopLifetime : IDisposable
         // Created after the banner so it disposes before the sink: the timer is fully stopped
         // (in-flight tick drained) before the sink erases the status line on shutdown.
         if (_config.MetricsEnabled)
+        {
             _metrics = new MetricsReporter(_sink, TimeSpan.FromMilliseconds(_config.MetricsIntervalMs));
+            // The control API's /api/status shows the same numbers the tray does; both are fed from
+            // this one sampler because MetricsSampler is stateful and only one timer may tick it.
+            if (_engine.ControlApi is { } controlApi)
+                _metrics.Sampled += controlApi.SetMetrics;
+        }
 
         if (!_config.TrayEnabled)
             return;
@@ -111,6 +117,23 @@ internal sealed class EngineDesktopLifetime : IDisposable
             _config.TrayEnabled,
             _sourceSelection.CurrentMonitorIndex,
             _config.Theme);
+        var settingsGate = new Lock();
+
+        EngineSettings ReadSettings()
+        {
+            lock (settingsGate)
+                return currentSettings;
+        }
+
+        SettingsSaveResult UpdateSettings(Func<EngineSettings, EngineSettings> update)
+        {
+            lock (settingsGate)
+            {
+                var result = SaveSettings(currentSettings, update(currentSettings));
+                currentSettings = result.Settings;
+                return result;
+            }
+        }
 
         // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
         // headless run has nobody to click Install. None of installer, launcher, or manager settings
@@ -123,16 +146,20 @@ internal sealed class EngineDesktopLifetime : IDisposable
         var controls = new TrayControls(
             _sourceSelection.MonitorLabels,
             _sourceSelection.CurrentMonitorIndex,
-            currentSettings,
+            ReadSettings,
             OcrPipeline.AvailableLanguageTags,
             OnSelectMonitor: index =>
                 PersistAndRestart(new Dictionary<string, object> { ["monitorIndex"] = index }),
-            OnSaveSettings: settings => SaveSettings(currentSettings, settings),
+            OnUpdateSettings: UpdateSettings,
             OnExit: _shutdown.Cancel,
             Plugins: new PluginServices(
                 _pluginInstaller,
                 _pluginLauncher,
                 PluginManagerSettings.Load(PluginPaths.SettingsFile(pluginRoot))));
+
+        // The control API drives the same callbacks and plugin services the tray does, so the two
+        // can never disagree about what an action did.
+        _engine.ControlApi?.SetControls(controls);
 
         _tray = new TrayApplication(
             _sink,
@@ -235,7 +262,13 @@ internal sealed class EngineDesktopLifetime : IDisposable
         _sink.WriteLine($"Tray:      {(_config.TrayEnabled ? "on" : "off")}");
     }
 
-    private void SaveSettings(EngineSettings currentSettings, EngineSettings settings)
+    /// <summary>
+    /// Validates and persists a settings change, falling back to a safe value for anything that would
+    /// make the relaunched process exit before any UI exists. Shared by the tray's Settings dialog and
+    /// the control API's <c>POST /api/settings</c> — both are doors into the same room, so both go
+    /// through the same lock rather than each keeping their own copy of these guards.
+    /// </summary>
+    internal SettingsSaveResult SaveSettings(EngineSettings currentSettings, EngineSettings settings)
     {
         // An unavailable OCR pack would make the relaunched process exit before the tray exists;
         // retain the existing fallback to automatic language selection instead.
@@ -293,12 +326,39 @@ internal sealed class EngineDesktopLifetime : IDisposable
             changes["theme"] = settings.Theme.ToString().ToLowerInvariant();
 
         if (changes.Count == 0)
-            return;
+            return new SettingsSaveResult(currentSettings, RestartPending: false);
 
-        if (SettingsRestartDecision.IsRestartRequired(changes))
-            PersistAndRestart(changes);
-        else
-            Persist(changes);
+        // What was actually corrected above, so a caller (the control API) can show the value that
+        // won rather than the one the client sent.
+        var persisted = currentSettings with
+        {
+            OutputDir = settings.OutputDir,
+            OcrLanguage = language,
+            ScanIntervalMs = settings.ScanIntervalMs,
+            Hotkey = hotkey,
+            PipeName = pipeName,
+            MetricsEnabled = settings.MetricsEnabled,
+            MetricsIntervalMs = settings.MetricsIntervalMs,
+            TrayEnabled = settings.TrayEnabled,
+            MonitorIndex = settings.MonitorIndex,
+            Theme = settings.Theme,
+        };
+
+        var restartRequired = SettingsRestartDecision.IsRestartRequired(changes);
+        var persistError = Persist(changes);
+        var persistedOk = persistError is null;
+        if (persistedOk && restartRequired)
+        {
+            Volatile.Write(ref _restartRequested, true);
+            _shutdown.Cancel();
+        }
+
+        // A failed write (see Persist) leaves the running config exactly as it was; report that
+        // rather than a value that was never actually saved.
+        return new SettingsSaveResult(
+            persistedOk ? persisted : currentSettings,
+            persistedOk && restartRequired,
+            persistError is null ? null : $"Could not save settings: {persistError}");
     }
 
     // Probes usability the same way the OS ultimately will: by actually creating and immediately
@@ -322,8 +382,11 @@ internal sealed class EngineDesktopLifetime : IDisposable
 
     private void PersistAndRestart(IReadOnlyDictionary<string, object> changes)
     {
-        if (!Persist(changes))
+        if (Persist(changes) is { } error)
+        {
+            ShowPersistenceError(error);
             return;
+        }
 
         Volatile.Write(ref _restartRequested, true);
         _shutdown.Cancel();
@@ -331,21 +394,23 @@ internal sealed class EngineDesktopLifetime : IDisposable
 
     // Every field but theme is bound at startup and needs the restart above to take effect; theme
     // does not, so its own save path stops here.
-    private bool Persist(IReadOnlyDictionary<string, object> changes)
+    private string? Persist(IReadOnlyDictionary<string, object> changes)
     {
         try
         {
             File.WriteAllText(_configPath, ConfigPatch.Apply(File.ReadAllText(_configPath), changes));
-            return true;
+            return null;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"Could not save settings:\n{ex.Message}",
-                "GameCapture",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
-            return false;
+            return ex.Message;
         }
     }
+
+    private static void ShowPersistenceError(string error)
+        => MessageBox.Show(
+            $"Could not save settings:\n{error}",
+            "GameCapture",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
 }
