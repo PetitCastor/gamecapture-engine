@@ -1,19 +1,35 @@
+using System.Windows.Forms;
 using Velopack;
 using Velopack.Sources;
 
 namespace GameCapture.Engine.Updates;
 
 /// <summary>
-/// Fire-and-forget update check run once at startup, reporting through <see cref="ConsoleSink"/>
-/// alongside the rest of the startup banner. Checking only — it does not download or apply
-/// anything; the user (or a future auto-update path) decides what to do with the result.
+/// Update check run once at startup, before any capture engine component (pipe, tray, plugins)
+/// exists, reporting through <see cref="ConsoleSink"/> alongside the rest of the startup banner.
+/// On finding a newer release it asks the user (via a plain <see cref="MessageBox"/> — no tray icon
+/// exists yet this early in startup) whether to install it; a "yes" downloads and applies the
+/// update, which restarts the process on the new version and never returns.
 /// </summary>
 /// <remarks>
+/// <para>
+/// Awaited by <c>Program.cs</c> rather than fired-and-forgotten: once accepting restarts the
+/// process, letting the network check and the prompt race against a live capture session — plugins
+/// connected, pipe bound — would turn "yes" into an abrupt kill instead of a clean startup gate.
+/// Blocking here only costs one network round trip plus however long the user takes to answer the
+/// dialog, and that cost is paid once, before anything is listening.
+/// </para>
+/// <para>
 /// Unpackaged runs (dotnet run, IDE debug, the raw publish zip) are not installed by Velopack's
 /// Setup.exe, so <see cref="UpdateManager.IsInstalled"/> is false and the check is skipped —
 /// mirroring <c>VelopackApp.Build().Run()</c>'s no-op behavior for the same case in Program.cs.
-/// Any failure (offline, GitHub rate limit, DNS) is swallowed: an update check is a courtesy, never
-/// a startup dependency.
+/// A failure in the check itself (offline, GitHub rate limit, DNS) is swallowed to the console: an
+/// update check is a courtesy, never a startup dependency. A failure <em>after</em> the user has
+/// explicitly consented (download/apply) instead surfaces a <see cref="MessageBox"/>, matching
+/// <see cref="StartupDiagnostics"/>'s pattern for a launch with no visible console — silently
+/// dropping a failure the user is actively waiting on would leave them stuck with no signal that
+/// their "yes" didn't do anything.
+/// </para>
 /// </remarks>
 internal static class EngineUpdateChecker
 {
@@ -21,21 +37,101 @@ internal static class EngineUpdateChecker
     // from) — packId GameCaptureEngine is pinned there as the permanent update-feed identity.
     private const string RepoUrl = "https://github.com/PetitCastor/gamecapture-engine";
 
+    // Caps how long a hung/offline network call can hold up startup now that this is awaited
+    // in-line rather than fired-and-forgotten. Not a CancellationToken on the call itself — Velopack
+    // doesn't expose one here — just a race against a timer so a dead connection can't block the
+    // pipe/tray/capture from ever starting.
+    private static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(8);
+
     public static async Task CheckAsync(ConsoleSink sink)
     {
+        UpdateManager manager;
+        UpdateInfo update;
         try
         {
-            var manager = new UpdateManager(new GithubSource(RepoUrl, null, false));
+            manager = new UpdateManager(new GithubSource(RepoUrl, null, false));
             if (!manager.IsInstalled)
                 return;
 
-            var update = await manager.CheckForUpdatesAsync();
-            if (update is not null)
-                sink.WriteLine($"Update available: v{update.TargetFullRelease.Version} (installed v{manager.CurrentVersion}).");
+            var checkTask = manager.CheckForUpdatesAsync();
+            if (await Task.WhenAny(checkTask, Task.Delay(CheckTimeout)) != checkTask)
+            {
+                sink.WriteLine("Update check timed out; continuing on the current version.");
+                return;
+            }
+
+            var found = await checkTask;
+            if (found is null)
+                return;
+            update = found;
+
+            sink.WriteLine($"Update available: v{update.TargetFullRelease.Version} (installed v{manager.CurrentVersion}).");
         }
         catch (Exception ex)
         {
             sink.WriteLine($"Update check failed: {ex.Message}");
+            return;
+        }
+
+        if (!TryAsk(
+            $"GameCapture v{update.TargetFullRelease.Version} is available (installed v{manager.CurrentVersion}).\n\nInstall now? The engine will restart.",
+            "GameCapture update available",
+            out var accepted))
+        {
+            sink.WriteLine("Update available but no interactive desktop to ask on; continuing on the current version.");
+            return;
+        }
+
+        if (!accepted)
+        {
+            sink.WriteLine("Update declined; continuing on the current version.");
+            return;
+        }
+
+        try
+        {
+            sink.WriteLine("Downloading update…");
+            await manager.DownloadUpdatesAsync(update);
+
+            sink.WriteLine("Update downloaded; restarting to apply.");
+            manager.ApplyUpdatesAndRestart(update); // exits this process and relaunches on the new version
+        }
+        catch (Exception ex)
+        {
+            sink.WriteLine($"Update install failed: {ex.Message}");
+            TryNotify(
+                $"Could not install the update:\n{ex.Message}\n\nGameCapture will continue on the current version.",
+                "GameCapture update failed");
+        }
+    }
+
+    // Window stations without an interactive desktop (a service context, some RDP/session-0
+    // configs) throw on MessageBox.Show rather than returning a result — same failure mode
+    // StartupDiagnostics.TryShowMessageBox already guards against. Returns false when the question
+    // could not be asked at all, distinct from a "no" answer.
+    private static bool TryAsk(string text, string caption, out bool accepted)
+    {
+        try
+        {
+            accepted = MessageBox.Show(text, caption, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            return true;
+        }
+        catch
+        {
+            accepted = false;
+            return false;
+        }
+    }
+
+    private static void TryNotify(string text, string caption)
+    {
+        try
+        {
+            MessageBox.Show(text, caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        catch
+        {
+            // Already logged to the sink above; no further user-facing channel exists here.
         }
     }
 }

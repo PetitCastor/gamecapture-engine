@@ -42,15 +42,20 @@ public static class TrayViewBuilder
 
         var fpsLine = fps is { } rate ? Invariant($"{rate:0.0}/s") : "—";
 
+        var version = string.IsNullOrEmpty(status.EngineVersion) ? "0.0.0" : status.EngineVersion;
+
+        // Version last: Truncate cuts from the right, and a long prerelease/commit suffix (e.g.
+        // "1.2.3-preview.45+a1b2c3d4e5f6") should lose its tail before the live mode/frame/plugin
+        // status — the fields an operator actually glances at the tray for — gets crowded out.
         var tooltip = Truncate(
-            Invariant($"GameCapture {mode} · {frame} · {pluginCount} plugin(s)"),
+            Invariant($"GameCapture {mode} · {frame} · {pluginCount} plugin(s) · v{version}"),
             TooltipMaxLength);
 
         return new TrayView(
             iconState,
             tooltip,
             mode,
-            string.IsNullOrEmpty(status.EngineVersion) ? "0.0.0" : status.EngineVersion,
+            version,
             frame,
             string.IsNullOrEmpty(status.OcrLanguage) ? "—" : status.OcrLanguage,
             fpsLine,
