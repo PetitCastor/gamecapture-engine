@@ -19,9 +19,10 @@ using var sink = new ConsoleSink();
 
 sink.WriteLine("=== GameCapture — Capture Engine ===");
 
-// Fire-and-forget: never blocks startup on a network call. Result (if any) lands whenever the
-// request resolves, interleaved through the same lock-guarded sink as every other status line.
-_ = EngineUpdateChecker.CheckAsync(sink);
+// Awaited, not fire-and-forget: a "yes" to the update prompt restarts the process, so this must
+// run to completion before the pipe is bound and plugins can connect — an update accepted mid-session
+// would be an abrupt kill instead of a clean startup gate.
+await EngineUpdateChecker.CheckAsync(sink);
 
 var configPath = EngineConfig.GetDefaultPath();
 EngineConfig config;
