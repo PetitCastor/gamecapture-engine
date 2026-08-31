@@ -105,4 +105,24 @@ public class TrayViewBuilderTests
         Assert.True(view.Tooltip.Length <= TrayViewBuilder.TooltipMaxLength);
         Assert.Contains("Live", view.Tooltip);
     }
+
+    [Fact]
+    public void Tooltip_EndsWithTheEngineVersion()
+    {
+        var view = TrayViewBuilder.Build(Status(version: "1.2.3"), Sample(), fps: null, metricsEnabled: true);
+
+        Assert.EndsWith("v1.2.3", view.Tooltip);
+    }
+
+    [Fact]
+    public void Tooltip_TruncatesTheVersionBeforeTheLiveStatusFields()
+    {
+        var longVersion = "1.2.3-preview.45+a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6";
+        var view = TrayViewBuilder.Build(Status(version: longVersion, clients: ["MissionPlugin"]), Sample(), fps: 2.0, metricsEnabled: true);
+
+        Assert.True(view.Tooltip.Length <= TrayViewBuilder.TooltipMaxLength);
+        Assert.Contains("Live", view.Tooltip);
+        Assert.Contains("2560x1440", view.Tooltip);
+        Assert.Contains("1 plugin(s)", view.Tooltip);
+    }
 }

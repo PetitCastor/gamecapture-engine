@@ -37,6 +37,12 @@ internal static class EngineUpdateChecker
     // from) — packId GameCaptureEngine is pinned there as the permanent update-feed identity.
     private const string RepoUrl = "https://github.com/PetitCastor/gamecapture-engine";
 
+    // Caps how long a hung/offline network call can hold up startup now that this is awaited
+    // in-line rather than fired-and-forgotten. Not a CancellationToken on the call itself — Velopack
+    // doesn't expose one here — just a race against a timer so a dead connection can't block the
+    // pipe/tray/capture from ever starting.
+    private static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(8);
+
     public static async Task CheckAsync(ConsoleSink sink)
     {
         UpdateManager manager;
@@ -47,7 +53,14 @@ internal static class EngineUpdateChecker
             if (!manager.IsInstalled)
                 return;
 
-            var found = await manager.CheckForUpdatesAsync();
+            var checkTask = manager.CheckForUpdatesAsync();
+            if (await Task.WhenAny(checkTask, Task.Delay(CheckTimeout)) != checkTask)
+            {
+                sink.WriteLine("Update check timed out; continuing on the current version.");
+                return;
+            }
+
+            var found = await checkTask;
             if (found is null)
                 return;
             update = found;
@@ -60,11 +73,14 @@ internal static class EngineUpdateChecker
             return;
         }
 
-        var accepted = MessageBox.Show(
+        if (!TryAsk(
             $"GameCapture v{update.TargetFullRelease.Version} is available (installed v{manager.CurrentVersion}).\n\nInstall now? The engine will restart.",
             "GameCapture update available",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Question) == DialogResult.Yes;
+            out var accepted))
+        {
+            sink.WriteLine("Update available but no interactive desktop to ask on; continuing on the current version.");
+            return;
+        }
 
         if (!accepted)
         {
@@ -83,11 +99,39 @@ internal static class EngineUpdateChecker
         catch (Exception ex)
         {
             sink.WriteLine($"Update install failed: {ex.Message}");
-            MessageBox.Show(
+            TryNotify(
                 $"Could not install the update:\n{ex.Message}\n\nGameCapture will continue on the current version.",
-                "GameCapture update failed",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+                "GameCapture update failed");
+        }
+    }
+
+    // Window stations without an interactive desktop (a service context, some RDP/session-0
+    // configs) throw on MessageBox.Show rather than returning a result — same failure mode
+    // StartupDiagnostics.TryShowMessageBox already guards against. Returns false when the question
+    // could not be asked at all, distinct from a "no" answer.
+    private static bool TryAsk(string text, string caption, out bool accepted)
+    {
+        try
+        {
+            accepted = MessageBox.Show(text, caption, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            return true;
+        }
+        catch
+        {
+            accepted = false;
+            return false;
+        }
+    }
+
+    private static void TryNotify(string text, string caption)
+    {
+        try
+        {
+            MessageBox.Show(text, caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        catch
+        {
+            // Already logged to the sink above; no further user-facing channel exists here.
         }
     }
 }
