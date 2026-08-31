@@ -6,7 +6,7 @@ namespace GameCapture.Engine.Tray;
 /// <summary>
 /// The modal settings screen reached from the tray menu: output directory, OCR language, scan
 /// interval, and hotkey — the <see cref="EngineSettings"/> fields exposed for editing. The remaining
-/// fields (pipe name, metrics, tray) pass through unedited. Seeded from an <see cref="EngineSettings"/>
+/// fields (pipe name, metrics, tray, monitor, theme) pass through unedited. Seeded from an <see cref="EngineSettings"/>
 /// and, on OK, exposes the edited one through <see cref="Result"/>. Applying a change is the host's job
 /// (persist + restart); this form only collects it — every field here is bound at engine startup and
 /// cannot change in place.
@@ -130,6 +130,8 @@ public sealed class SettingsForm : Form
             Result.PipeName,
             Result.MetricsEnabled,
             Result.MetricsIntervalMs,
-            Result.TrayEnabled);
+            Result.TrayEnabled,
+            Result.MonitorIndex,
+            Result.Theme);
     }
 }

@@ -38,6 +38,9 @@ public sealed class PluginInstaller : IDisposable
     /// <summary>What is installed for this user. Reloaded from disk only at construction.</summary>
     public PluginInstallState State { get; }
 
+    /// <summary>Raised after the installed set changes.</summary>
+    public event Action? Changed;
+
     /// <summary>Downloads and parses the stable <c>plugins.json</c> catalog.</summary>
     /// <exception cref="InvalidOperationException">The catalog could not be fetched or read.</exception>
     public async Task<IReadOnlyList<CatalogEntry>> FetchCatalogAsync(CancellationToken cancellationToken)
@@ -149,6 +152,7 @@ public sealed class PluginInstaller : IDisposable
 
             State.Set(installed);
             State.Save();
+            Changed?.Invoke();
             return installed;
         }
         finally
@@ -168,7 +172,10 @@ public sealed class PluginInstaller : IDisposable
             Directory.Delete(directory, recursive: true);
 
         if (State.Remove(id))
+        {
             State.Save();
+            Changed?.Invoke();
+        }
     }
 
     public void Dispose() => _http.Dispose();

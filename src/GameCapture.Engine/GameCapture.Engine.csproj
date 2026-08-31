@@ -29,7 +29,12 @@
     <ProjectReference Include="..\GameCapture.Contracts\GameCapture.Contracts.csproj" />
   </ItemGroup>
 
+  <!-- Static UI assets served by the control API (TASK-UI-03) from the same origin as /api/*.
+       Copied so ControlApi.Map can find them next to the built exe; a test host's own output
+       directory never gets this, and ControlApi.Map skips static-file serving entirely when the
+       folder is absent. -->
   <ItemGroup>
+    <Content Include="ui\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

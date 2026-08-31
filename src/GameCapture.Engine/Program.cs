@@ -86,7 +86,7 @@ var sourceSelection = sourceCreation.Selection!;
 var source = sourceSelection.Source;
 var livePaced = source.Mode.IsInteractive();
 
-await using var engine = EngineHost.Create(pipeName, config, ocr, source, sink, verbose);
+await using var engine = EngineHost.Create(pipeName, config, ocr, source, sink, verbose, sourceSelection);
 
 // Same fail-with-a-message contract as the OCR pack check above: a pipe name collision
 // (second instance already bound, or an invalid name) is user error, not a bug.
@@ -101,6 +101,10 @@ catch (Exception ex)
 }
 
 sink.WriteLine($"Pipe:      {pipeName}");
+// The token itself is never written here (or anywhere) — the port is the only thing a developer
+// needs to curl the control API by hand; the token stays in memory only.
+if (engine.ControlApiPort is { } controlApiPort)
+    sink.WriteLine($"Control:   http://127.0.0.1:{controlApiPort}/ (token required for /api/*)");
 sink.WriteLine(sourceSelection.Description);
 var otherOcrPacks = OcrPipeline.AvailableLanguageTags.Where(t => t != ocr.LanguageTag).ToArray();
 sink.WriteLine($"OCR:       {ocr.Language}{(otherOcrPacks.Length > 0

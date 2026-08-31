@@ -1,5 +1,8 @@
 using GameCapture.Engine.Grpc;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GameCapture.Engine;
 
@@ -27,37 +30,80 @@ internal sealed class EngineHost : IAsyncDisposable
     private bool _stopped;
 
     private EngineHost(WebApplication app, IFrameSource source, EngineStatus status,
-        SubscriptionRegistry registry, ScanLoop scanLoop)
+        SubscriptionRegistry registry, ScanLoop scanLoop,
+        ControlApiToken? controlApiToken, ControlApiState? controlApiState)
     {
         _app = app;
         _source = source;
         Status = status;
         Registry = registry;
         ScanLoop = scanLoop;
+        ControlApiToken = controlApiToken;
+        ControlApi = controlApiState;
     }
 
     public EngineStatus Status { get; }
     public SubscriptionRegistry Registry { get; }
     public ScanLoop ScanLoop { get; }
 
+    /// <summary>Bearer token for the loopback control API, or <c>null</c> for a non-interactive
+    /// (headless replay/video) run where no such listener exists. Held only for trusted in-process
+    /// consumers (TASK-UI-04's WebView2 window) — never logged, persisted, or placed in a URL.</summary>
+    internal ControlApiToken? ControlApiToken { get; }
+
+    /// <summary>Late-bound handoff <see cref="EngineDesktopLifetime.Start"/> populates with the tray's
+    /// callback bundle and metrics feed once they exist. Null for the same non-interactive case as
+    /// <see cref="ControlApiToken"/>.</summary>
+    internal ControlApiState? ControlApi { get; }
+
+    /// <summary>Port the loopback control API bound to, resolved after <see cref="StartAsync"/>
+    /// completes. Null until then, and forever for a non-interactive run.</summary>
+    public int? ControlApiPort { get; private set; }
+
     /// <summary>
     /// Takes ownership of <paramref name="source"/>: it is disposed with the host, together with
     /// the retained frame the scan loop holds.
     /// </summary>
+    /// <param name="sourceSelection">Monitor list/index for the control API's <c>/api/monitors</c>.
+    /// Optional — a caller that never needs the control API (existing tests, a non-interactive
+    /// source) can omit it.</param>
     public static EngineHost Create(
         string pipeName, EngineConfig config, OcrPipeline ocr, IFrameSource source,
-        ConsoleSink sink, bool verbose)
+        ConsoleSink sink, bool verbose, FrameSourceSelection? sourceSelection = null)
     {
         var status = new EngineStatus(ocr.LanguageTag, source.Mode.UsesReplayFlow());
         var registry = new SubscriptionRegistry(status);
         var scanLoop = new ScanLoop(source, ocr, registry, status, sink, config, verbose);
-        var app = GrpcHost.BuildGrpcHost(pipeName, status, registry, scanLoop, ocr, config);
 
-        return new EngineHost(app, source, status, registry, scanLoop);
+        // A headless replay/video run must never open a loopback socket — there is no UI to serve it
+        // to, and the source is the one thing already known at this point that says so.
+        var enableControlApi = source.Mode.IsInteractive();
+        var controlApiToken = enableControlApi ? new ControlApiToken() : null;
+        var controlApiState = enableControlApi ? new ControlApiState() : null;
+
+        var app = GrpcHost.BuildGrpcHost(
+            pipeName, status, registry, scanLoop, ocr, config, sink,
+            sourceSelection, controlApiToken, controlApiState);
+
+        return new EngineHost(app, source, status, registry, scanLoop, controlApiToken, controlApiState);
     }
 
-    /// <summary>Starts serving the pipe. Plugins can connect and subscribe before the loop runs.</summary>
-    public Task StartAsync(CancellationToken ct = default) => _app.StartAsync(ct);
+    /// <summary>Starts serving the pipe (and, when interactive, the loopback control API). Plugins can
+    /// connect and subscribe before the loop runs.</summary>
+    public async Task StartAsync(CancellationToken ct = default)
+    {
+        await _app.StartAsync(ct);
+
+        if (ControlApiToken is null)
+            return;
+
+        // Port 0 means the OS picked one; IServerAddressesFeature is where Kestrel reports back what
+        // it actually bound once the server is listening.
+        var addresses = _app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>();
+        var loopback = addresses?.Addresses.FirstOrDefault(a => a.Contains("127.0.0.1", StringComparison.Ordinal));
+        if (loopback is not null && Uri.TryCreate(loopback, UriKind.Absolute, out var uri))
+            ControlApiPort = uri.Port;
+    }
 
     /// <summary>
     /// Runs the scan loop until cancellation (live) or corpus exhaustion (replay). Returns only

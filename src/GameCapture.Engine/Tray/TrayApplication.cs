@@ -270,7 +270,17 @@ public sealed class TrayApplication : IDisposable
     {
         using var dialog = new SettingsForm(controls.Settings, controls.AvailableOcrLanguages);
         if (dialog.ShowDialog() == DialogResult.OK && dialog.Result != controls.Settings)
-            controls.OnSaveSettings(dialog.Result);
+        {
+            var result = controls.SaveSettings(dialog.Result);
+            if (!result.Succeeded)
+            {
+                MessageBox.Show(
+                    result.Error,
+                    "GameCapture",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
     }
 
     private void Refresh()

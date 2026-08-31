@@ -79,6 +79,29 @@ public class PluginInstallStateTests : IDisposable
     }
 
     [Fact]
+    public async Task ConcurrentSetAndSave_ForDifferentIds_NeverThrowsOrCorruptsTheDocument()
+    {
+        // Reproduces the HIGH finding from the PR #56 review: before PluginInstallState took its own
+        // lock, two different-id Set/Save pairs running on separate threads (as the control API now
+        // allows — one HTTP request per plugin id, no longer serialized by the WinForms tray being
+        // single-threaded) could tear the Dictionary mid-enumeration or interleave two non-atomic
+        // File.WriteAllText calls into a corrupt installed.json.
+        var state = PluginInstallState.Load(StatePath);
+        var ids = Enumerable.Range(0, 20).Select(i => $"plugin-{i}").ToArray();
+
+        await Task.WhenAll(ids.Select(id => Task.Run(() =>
+        {
+            state.Set(Entry(id));
+            state.Save();
+        })));
+
+        var reloaded = PluginInstallState.Load(StatePath);
+        Assert.Equal(ids.Length, reloaded.Entries.Count);
+        foreach (var id in ids)
+            Assert.True(reloaded.TryGet(id, out _));
+    }
+
+    [Fact]
     public void LegacyDocument_DefaultsMissingChannelAndUrlToStable()
     {
         Directory.CreateDirectory(_root);
