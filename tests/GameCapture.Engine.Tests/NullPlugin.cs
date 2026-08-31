@@ -32,6 +32,21 @@ internal sealed class NullPlugin : IGameCapturePlugin
     public int TickCount => Volatile.Read(ref _tickCount);
     private int _tickCount;
 
+    /// <summary>
+    /// Ticks that carried a result — success or per-ROI error — under this plugin's own first
+    /// subscribed id.
+    /// </summary>
+    /// <remarks>
+    /// The engine registers a client when its Track call opens and starts ticking it immediately,
+    /// which is before its RoiSetUpdate has been read; such a tick is well formed and completely
+    /// empty. <see cref="TickCount"/> counts those exactly like any other, so a test that wants to
+    /// say "the engine answered what I subscribed" cannot say it with that number alone.
+    /// <see cref="RoiStatus.NotSubscribed"/> is precisely the "no result under this id" case, so
+    /// anything else means the subscription had been applied by the time the frame was read.
+    /// </remarks>
+    public int AnsweredTickCount => Volatile.Read(ref _answeredTickCount);
+    private int _answeredTickCount;
+
     public int ManualTickCount => Volatile.Read(ref _manualTickCount);
     private int _manualTickCount;
 
@@ -52,6 +67,10 @@ internal sealed class NullPlugin : IGameCapturePlugin
     public Task OnTickAsync(TickContext ctx, CancellationToken ct)
     {
         Interlocked.Increment(ref _tickCount);
+
+        if (Rois.Count > 0 && ctx.Tick.Status(Rois[0].Id) != RoiStatus.NotSubscribed)
+            Interlocked.Increment(ref _answeredTickCount);
+
         return ThrowOnTick is null ? Task.CompletedTask : Task.FromException(ThrowOnTick);
     }
 
