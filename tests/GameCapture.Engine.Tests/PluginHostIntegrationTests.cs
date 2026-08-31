@@ -1,3 +1,4 @@
+using GameCapture.Contracts.Proto;
 using GameCapture.Sdk;
 using Xunit;
 using Xunit.Abstractions;
@@ -22,6 +23,15 @@ public class PluginHostIntegrationTests(ITestOutputHelper output)
     /// measures in seconds. Anything near this means something is stuck rather than slow.
     /// </summary>
     private static readonly TimeSpan TestTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Frames the engine scans before the plugin process exists, and frames it scans afterwards.
+    /// Both are small on purpose: the first only has to make "already capturing" true, and the
+    /// second only has to be more than the handshake could account for. <see cref="GatedFrameSource"/>
+    /// cycles the corpus, so neither is bounded by how many PNGs are in it.
+    /// </summary>
+    private const int FramesBeforeJoin = 3;
+    private const int FramesAfterJoin = 3;
 
     private static string NewPipeName() => $"sc-host-{Guid.NewGuid():N}";
 
@@ -307,6 +317,120 @@ public class PluginHostIntegrationTests(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// The engine is already capturing when the plugin turns up — a user installing a plugin from
+    /// the tray while the game is running, which is how a plugin is normally added at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every other test in this file runs a replay source, and replay makes this scenario
+    /// unreachable: <c>ScanLoop.RunAsync</c> waits on <c>WaitForAnySubscribedAsync</c> before it
+    /// touches the corpus, so the plugin is always early no matter when it is started. Live mode has
+    /// no such gate, and that difference is the whole subject here — the loop has been scanning,
+    /// discarding ticks into an empty subscriber set, since before this plugin's process existed.
+    /// </para>
+    /// <para>
+    /// <c>ProtocolHandshakeTests</c> covers the neighbouring case of a late <c>Hello</c>, but its
+    /// <c>Track</c> call is opened before the frames are released and it never sends a
+    /// <c>RoiSetUpdate</c>. What is unproven until here is the one the user actually performs: a
+    /// connection opened after the fact, subscribing real ROIs, and getting results for them.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task WhenTheEngineIsAlreadyCapturing_ALateStartingHostStillGetsTicks()
+    {
+        using var cts = new CancellationTokenSource(TestTimeout);
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        using var scanCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+        using var engineSink = new ConsoleSink();
+        var hostOutput = new RecordingOutput();
+
+        var pipeName = NewPipeName();
+        var plugin = new NullPlugin();
+
+        // Owned by the host, which disposes it — hence no `using` of our own. Live mode for the
+        // reason in the remarks; the gate is what lets this test state "N frames were scanned" as a
+        // fact rather than as a hope about timing.
+        var source = new GatedFrameSource(EngineTestFixtures.ReplayDir, isReplay: false);
+
+        // The live path sleeps a scan interval between frames; at the floor this costs the test a
+        // fraction of a second instead of several.
+        var config = new EngineConfig { ScanIntervalMs = 100 };
+
+        await using var engine = EngineHost.Create(pipeName, config, new OcrPipeline(),
+            source, engineSink, verbose: false);
+        await engine.StartAsync(cts.Token);
+
+        // Capturing with nothing installed: no plugin process exists yet, and the loop does not care.
+        var scan = engine.RunScanAsync(scanCts.Token);
+        try
+        {
+            using var channel = NamedPipeChannel.Create(pipeName);
+            var grpc = new CaptureEngineService.CaptureEngineServiceClient(channel);
+
+            // Polled rather than slept, for the reason ProtocolHandshakeTests polls: the frames must
+            // genuinely be scanned before the plugin starts, or this passes on timing instead.
+            source.Release(FramesBeforeJoin);
+            await WaitForFrameSeqAsync(grpc, FramesBeforeJoin, cts.Token);
+
+            // Only now is the plugin launched. Nothing releases frames during the handshake, so
+            // every tick it sees is one it is subscribed for.
+            var run = GameCapturePluginHost.RunAsync(plugin, ["--pipe", pipeName],
+                Options(hostOutput, shutdown.Token));
+
+            await WaitUntilAsync(() => plugin.EventsOf<SessionEvent.Connected>().Count == 1, cts.Token);
+
+            // Frames it can only have seen by having joined late. Waited on the ANSWERED count:
+            // an empty tick would satisfy the raw count while proving nothing about the ROI set.
+            source.Release(FramesAfterJoin);
+            await WaitUntilAsync(() => plugin.AnsweredTickCount >= FramesAfterJoin, cts.Token);
+
+            // A live stream never ends on its own; the plugin is the one that stops.
+            await shutdown.CancelAsync();
+            var exit = await run.WaitAsync(TestTimeout);
+
+            output.WriteLine($"{FramesBeforeJoin} frame(s) scanned before the plugin existed, " +
+                $"{plugin.TickCount} tick(s) dispatched after it connected");
+
+            Assert.False(cts.IsCancellationRequested, "timed out");
+            Assert.Equal(0, exit);
+
+            // The claim under test, and exact rather than "at least": the gate released exactly
+            // FramesAfterJoin permits and nothing else can produce a frame, so a count above this
+            // would mean a late joiner is being served ticks twice.
+            Assert.Equal(FramesAfterJoin, plugin.TickCount);
+
+            // And every one of them actually carried the ROI this plugin subscribed. Without this
+            // the test passes on empty ticks — the engine ticks a client from the moment its Track
+            // call opens, which is before its RoiSetUpdate has been applied, so "a tick arrived" and
+            // "my subscription was honoured" are genuinely different claims.
+            Assert.Equal(FramesAfterJoin, plugin.AnsweredTickCount);
+
+            var connected = Assert.Single(plugin.EventsOf<SessionEvent.Connected>());
+            Assert.False(connected.Engine.ReplayMode);
+
+            // A late joiner's HelloAck is built from a status snapshot that has already seen a
+            // frame, so it carries real dimensions — where a plugin started alongside the engine
+            // gets the documented 0/0 and has to wait for its first tick to learn them.
+            Assert.NotEqual(0, connected.Engine.FrameWidth);
+            Assert.NotEqual(0, connected.Engine.FrameHeight);
+
+            // The assertion that would actually catch a regression. The engine's frame sequence is
+            // already past FramesBeforeJoin when this plugin's first tick arrives, and reporting
+            // that head start as dropped ticks would tell every late-joining plugin it had missed
+            // frames it was never entitled to.
+            Assert.Empty(plugin.EventsOf<SessionEvent.TicksDropped>());
+            Assert.Empty(plugin.EventsOf<SessionEvent.Reconnecting>());
+        }
+        finally
+        {
+            // Stop the loop before the host disposes the gated source out from under it.
+            scanCts.Cancel();
+            try { await scan; } catch (OperationCanceledException) { }
+        }
+    }
+
+    /// <summary>
     /// Runs the corpus with a plugin subscribing one readable ROI and one that cannot be read at all,
     /// under the given policy.
     /// </summary>
@@ -360,5 +484,18 @@ public class PluginHostIntegrationTests(ITestOutputHelper output)
             ct.ThrowIfCancellationRequested();
             await Task.Delay(25, ct);
         }
+    }
+
+    /// <summary>Waits until the engine reports having scanned at least <paramref name="minSeq"/> frames.</summary>
+    /// <remarks>
+    /// A copy of the poll in <c>ProtocolHandshakeTests</c> rather than a shared helper: it is two
+    /// lines, and widening that one's accessibility to reach it would be the larger change. It polls
+    /// the engine directly rather than the plugin, because at the point of use there is no plugin.
+    /// </remarks>
+    private static async Task WaitForFrameSeqAsync(
+        CaptureEngineService.CaptureEngineServiceClient grpc, ulong minSeq, CancellationToken ct)
+    {
+        while ((await grpc.GetStatusAsync(new StatusRequest(), cancellationToken: ct)).FrameSeq < minSeq)
+            await Task.Delay(10, ct);
     }
 }
