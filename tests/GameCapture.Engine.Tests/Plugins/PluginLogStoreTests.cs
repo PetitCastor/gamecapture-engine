@@ -63,6 +63,7 @@ public class PluginLogStoreTests
 
         Assert.False(page.HasBuffer);
         Assert.Empty(page.Lines);
+        Assert.Equal(-1, page.NextSequence);
     }
 
     [Fact]

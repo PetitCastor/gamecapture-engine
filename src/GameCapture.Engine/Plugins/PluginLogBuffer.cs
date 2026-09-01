@@ -79,12 +79,10 @@ internal sealed class PluginLogBuffer
             for (var i = 0; i < take; i++)
                 lines[i] = _ring[(_head + skip + i) % _ring.Length];
 
-            // The cursor lands on the next line this reader has not been handed, whatever the reason it
-            // stopped: the limit, the end of the buffer, or a limit of zero that took nothing at all.
-            // Deriving it from the offset rather than from the page's contents is what keeps the "no
-            // line is ever skipped" promise for the pages that come back empty. When the read did reach
-            // the end this is exactly _nextSequence, since oldest + _count is how that value is built.
-            var next = oldest + skip + take;
+            // `after` is exclusive, so the caller must send back the last line it actually received.
+            // Returning the next unread sequence would make the next request exclude it and skip that
+            // line. An empty page leaves the cursor unchanged for the same reason.
+            var next = take > 0 ? lines[^1].Sequence : after;
 
             return new PluginLogPage(
                 HasBuffer: true,

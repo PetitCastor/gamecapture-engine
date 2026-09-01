@@ -427,7 +427,7 @@ public class ControlApiTests
             $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs");
 
         Assert.True(body.GetProperty("hasBuffer").GetBoolean());
-        Assert.Equal(2, body.GetProperty("nextSequence").GetInt64());
+        Assert.Equal(1, body.GetProperty("nextSequence").GetInt64());
         Assert.False(body.GetProperty("truncated").GetBoolean());
 
         var lines = body.GetProperty("lines").EnumerateArray().ToList();
@@ -474,7 +474,31 @@ public class ControlApiTests
             $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs?limit=3");
 
         Assert.Equal(3, body.GetProperty("lines").GetArrayLength());
-        Assert.Equal(3, body.GetProperty("nextSequence").GetInt64());
+        Assert.Equal(2, body.GetProperty("nextSequence").GetInt64());
+    }
+
+    [Fact]
+    public async Task PluginLogs_NextSequenceCanBeReusedAsTheExclusiveCursor()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        await client.GetAsync("/api/plugins");
+
+        harness.Logs.Open(FakePluginCatalogHandler.PluginId);
+        foreach (var i in Enumerable.Range(0, 4))
+            harness.Logs.Append(FakePluginCatalogHandler.PluginId, PluginLogStream.Stdout, $"line {i}");
+
+        var first = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs?limit=2");
+        var cursor = first.GetProperty("nextSequence").GetInt64();
+
+        var second = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs?after={cursor}");
+
+        Assert.Equal(1, cursor);
+        Assert.Equal(
+            ["line 2", "line 3"],
+            second.GetProperty("lines").EnumerateArray().Select(line => line.GetProperty("text").GetString()));
     }
 
     /// <summary>

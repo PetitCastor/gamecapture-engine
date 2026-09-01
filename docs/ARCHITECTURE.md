@@ -118,9 +118,10 @@ plain ES modules, no bundler).
   buffer opens when the process starts, so a plugin that dies during startup still has its stderr and
   its exit code to show, and it outlives the process — a stopped row can still be read from. Buffers
   end only on uninstall and on engine exit. The UI reads them by polling
-  `GET /api/plugins/{id}/logs` with a sequence cursor rather than over `/api/events`: that hub has no
-  per-client subscription — every message goes to every socket — and is built around a change-only
-  push at 250 ms or slower, not one broadcast per line of a chatty plugin.
+  `GET /api/plugins/{id}/logs` with a sequence cursor rather than over `/api/events`: the response's
+  `nextSequence` is the final delivered line and is sent back as the exclusive `after` cursor on the
+  next poll. That hub has no per-client subscription — every message goes to every socket — and is
+  built around a change-only push at 250 ms or slower, not one broadcast per line of a chatty plugin.
 - **Disabled for non-interactive runs**: `--replay`/`--video` (without `--video-realtime`) never
   start the control API, the window, or the tray at all — nothing needs a UI to drive a batch corpus
   run, and there is no operator present to click anything (`EngineDesktopLifetime.Start`'s

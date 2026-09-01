@@ -93,6 +93,11 @@ let pluginRows = [];
 let selectedPluginId = null;
 const busyPluginIds = new Set();
 const pluginRowErrors = new Map();
+const PLUGIN_LOG_POLL_MS = 1000;
+const MAX_RENDERED_PLUGIN_LOG_LINES = 1000;
+let pluginLogView = null;
+let pluginLogPollTimer = null;
+let pluginLogPollInFlight = false;
 
 function pluginGlyphMarkup(row) {
   // Mirrors the four states the approved mock illustrated: an in-flight update takes visual
@@ -156,6 +161,7 @@ function pluginActionButtons(row) {
       enabled: true,
     });
   }
+  if (row.hasLogs) buttons.push({ action: "logs", label: "Show logs", primary: false, enabled: true });
   if (row.canRemove) buttons.push({ action: "uninstall", label: "Remove", primary: false, enabled: true });
 
   return buttons;
@@ -175,6 +181,10 @@ function renderPluginList(rows) {
   if (selectedPluginId && !rows.some((row) => row.id === selectedPluginId)) {
     selectedPluginId = null;
   }
+  if (pluginLogView && !rows.some((row) => row.id === pluginLogView.id)) {
+    stopPluginLogPolling();
+    pluginLogView = null;
+  }
 
   pluginList.innerHTML = rows.map(renderPluginRow).join("");
 
@@ -184,7 +194,14 @@ function renderPluginList(rows) {
   pluginList.querySelectorAll("[data-plugin-action]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      runPluginAction(button.dataset.pluginId, button.dataset.pluginAction);
+      if (button.dataset.pluginAction === "logs") togglePluginLogs(button.dataset.pluginId);
+      else runPluginAction(button.dataset.pluginId, button.dataset.pluginAction);
+    });
+  });
+  pluginList.querySelectorAll("[data-close-plugin-logs]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closePluginLogs();
     });
   });
 }
@@ -208,6 +225,7 @@ function renderPluginRow(row) {
   const versionText = pluginDetailVersion(row);
   const versionSpan = versionText ? `<span class="detail-version">${escapeHtml(versionText)}</span>` : "";
   const errorHtml = error ? `<p class="row-error">${escapeHtml(error)}</p>` : "";
+  const logsHtml = pluginLogView?.id === row.id ? renderPluginLogs() : "";
 
   return `
     <li>
@@ -223,6 +241,7 @@ function renderPluginRow(row) {
         <h3>${escapeHtml(row.name)}${versionSpan}</h3>
         ${description}
         <div class="action-row">${buttonsHtml}</div>
+        ${logsHtml}
         ${errorHtml}
       </div>
     </li>`;
@@ -230,7 +249,89 @@ function renderPluginRow(row) {
 
 function selectPlugin(id) {
   selectedPluginId = selectedPluginId === id ? null : id;
+  if (pluginLogView && pluginLogView.id !== selectedPluginId) {
+    stopPluginLogPolling();
+    pluginLogView = null;
+  }
   renderPluginList(pluginRows);
+}
+
+function renderPluginLogs() {
+  const view = pluginLogView;
+  const status = view.error
+    ? `<p class="plugin-log-status is-error">${escapeHtml(view.error)}</p>`
+    : view.loading
+      ? '<p class="plugin-log-status">Loading captured output…</p>'
+      : view.lines.length === 0
+        ? '<p class="plugin-log-status">No captured output yet.</p>'
+        : "";
+  const truncation = view.truncated
+    ? '<p class="plugin-log-status is-warning">Some older captured output was discarded.</p>'
+    : "";
+  const lines = view.lines.map((line) =>
+    `<span class="plugin-log-line stream-${escapeHtml(line.stream)}"><span class="plugin-log-stream">${escapeHtml(line.stream)}</span>${escapeHtml(line.text)}</span>`).join("\n");
+
+  return `
+    <section class="plugin-logs" aria-label="Captured plugin output">
+      <div class="plugin-logs-header">
+        <h4>Captured output</h4>
+        <button type="button" class="btn plugin-logs-close" data-close-plugin-logs>Close</button>
+      </div>
+      ${truncation}
+      ${status}
+      <pre class="plugin-log-output" aria-live="polite">${lines}</pre>
+    </section>`;
+}
+
+async function togglePluginLogs(id) {
+  if (pluginLogView?.id === id) {
+    closePluginLogs();
+    return;
+  }
+
+  stopPluginLogPolling();
+  pluginLogView = { id, lines: [], nextSequence: -1, truncated: false, loading: true, error: "" };
+  renderPluginList(pluginRows);
+  await refreshPluginLogs();
+
+  if (pluginLogView?.id === id) {
+    pluginLogPollTimer = setInterval(refreshPluginLogs, PLUGIN_LOG_POLL_MS);
+  }
+}
+
+function closePluginLogs() {
+  stopPluginLogPolling();
+  pluginLogView = null;
+  renderPluginList(pluginRows);
+}
+
+function stopPluginLogPolling() {
+  if (pluginLogPollTimer !== null) clearInterval(pluginLogPollTimer);
+  pluginLogPollTimer = null;
+}
+
+async function refreshPluginLogs() {
+  const view = pluginLogView;
+  if (!view || pluginLogPollInFlight) return;
+
+  pluginLogPollInFlight = true;
+  try {
+    const page = await api.getPluginLogs(view.id, view.nextSequence);
+    if (pluginLogView !== view) return;
+
+    view.lines = [...view.lines, ...page.lines].slice(-MAX_RENDERED_PLUGIN_LOG_LINES);
+    view.nextSequence = page.nextSequence;
+    view.truncated ||= page.truncated;
+    view.loading = false;
+    view.error = "";
+  } catch (err) {
+    if (pluginLogView !== view) return;
+    view.loading = false;
+    view.error = err.message;
+  } finally {
+    pluginLogPollInFlight = false;
+    if (pluginLogView === view) renderPluginList(pluginRows);
+  }
 }
 
 async function runPluginAction(id, action) {

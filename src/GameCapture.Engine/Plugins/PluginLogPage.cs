@@ -7,8 +7,8 @@ namespace GameCapture.Engine.Plugins;
 /// <param name="HasBuffer">Whether this plugin has been started at least once this session. A plugin
 /// that never ran is not an error — it is an empty page that says so.</param>
 /// <param name="Lines">Lines newer than the cursor, oldest first, capped by the request's limit.</param>
-/// <param name="NextSequence">The cursor to send back next time. On a limit-capped page this points at
-/// the remainder rather than past it, so nothing is skipped by paging.</param>
+/// <param name="NextSequence">The exclusive <c>after</c> cursor to send back next time: the final line
+/// delivered by this page, or the caller's previous cursor when the page is empty.</param>
 /// <param name="OldestSequence">Sequence of the oldest line still retained.</param>
 /// <param name="DroppedLines">How many lines this buffer has evicted since it opened — a standing
 /// "the history is trimmed" fact, not a per-request one.</param>

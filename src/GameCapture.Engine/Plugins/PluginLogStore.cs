@@ -72,5 +72,11 @@ public sealed class PluginLogStore
     internal PluginLogPage Read(string id, long after, int limit)
         => _buffers.TryGetValue(id, out var buffer)
             ? buffer.Read(after, limit)
-            : new PluginLogPage(HasBuffer: false, [], NextSequence: 0, OldestSequence: 0, DroppedLines: 0, Truncated: false);
+            : new PluginLogPage(
+                HasBuffer: false,
+                [],
+                NextSequence: Math.Max(after, -1),
+                OldestSequence: 0,
+                DroppedLines: 0,
+                Truncated: false);
 }
