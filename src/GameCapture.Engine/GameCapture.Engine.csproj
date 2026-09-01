@@ -44,6 +44,10 @@
 
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore" Version="2.83.0" />
+    <!-- Hosts the main window's client area (Shell/MainWindow.cs, TASK-UI-04). The only new dependency
+         in the WebView2-window redesign — everything else it needed (the control API, the token,
+         the loopback port) already existed from TASK-UI-03. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <!-- Installer/update runtime for the Velopack Setup.exe cut by release.yml. Pinned to the same
          version as the `vpk` local tool in .config/dotnet-tools.json: Velopack warns at pack time
          when the CLI and the SDK disagree, so the two move together or not at all. -->

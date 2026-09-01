@@ -95,6 +95,76 @@ public sealed class EngineConfigTests
     }
 
     [Fact]
+    public void Load_CreatesParentDirectoryAndDefaultConfig_WithCloseToTrayNoticeNotYetShown()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "GameCapture.Engine.Tests", Guid.NewGuid().ToString());
+        var path = Path.Combine(directory, "engine-config.json");
+
+        try
+        {
+            var config = EngineConfig.Load(path);
+
+            Assert.False(config.CloseToTrayNoticeShown);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_OffersCloseToTrayNoticeShownToAConfigFileThatPredatesIt()
+    {
+        // A file from before TASK-UI-04 has no "closeToTrayNoticeShown" key — the seed path must add
+        // it (as false) so a pre-existing install still gets the one-time balloon on its next close,
+        // the same way an old file gets offered "theme".
+        var directory = Path.Combine(Path.GetTempPath(), "GameCapture.Engine.Tests", Guid.NewGuid().ToString());
+        var path = Path.Combine(directory, "engine-config.json");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(path, """{ "hotkey": "Ctrl+Shift+F12" }""");
+
+            var config = EngineConfig.Load(path);
+
+            Assert.False(config.CloseToTrayNoticeShown);
+            var onDisk = File.ReadAllText(path);
+            Assert.Contains("\"closeToTrayNoticeShown\"", onDisk);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_RoundTripsCloseToTrayNoticeShownOnceItIsTrue()
+    {
+        // The one-time balloon persists across restarts: once a config file says the notice already
+        // fired, a later load must not forget that and offer it again.
+        var directory = Path.Combine(Path.GetTempPath(), "GameCapture.Engine.Tests", Guid.NewGuid().ToString());
+        var path = Path.Combine(directory, "engine-config.json");
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(path, """{ "hotkey": "Ctrl+Shift+F12", "closeToTrayNoticeShown": true }""");
+
+            var config = EngineConfig.Load(path);
+
+            Assert.True(config.CloseToTrayNoticeShown);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Serialize_WritesThemeLowercase()
     {
         var config = new EngineConfig { Theme = EngineTheme.Dark };

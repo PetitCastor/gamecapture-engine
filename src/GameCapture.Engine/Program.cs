@@ -1,4 +1,5 @@
 using GameCapture.Engine;
+using GameCapture.Engine.Shell;
 using GameCapture.Engine.Updates;
 using Velopack;
 
@@ -10,6 +11,16 @@ using Velopack;
 // engine start — tray icon, gRPC listener — and never exit, leaving Setup blocked on its hook
 // timeout with a stray engine running. Run() is a no-op on an ordinary user launch.
 VelopackApp.Build().Run();
+
+// Immediately after the Velopack hook check above — never before it, or an install/update
+// re-invocation would be mistaken for a duplicate launch and hang Setup on its hook timeout — and
+// before anything else: no console, no banner, no pipe bind. A second launch signals the running
+// instance (which brings its window forward) and exits 0 here with no console noise, instead of
+// falling through to the pipe-collision path further down that used to read as a broken app.
+var requiresSingleInstance = SingleInstance.IsRequiredFor(args);
+using var singleInstance = requiresSingleInstance ? SingleInstance.Acquire() : null;
+if (requiresSingleInstance && singleInstance is null)
+    return 0;
 
 ConsoleWindowVisibility.EnsureDebugConsole();
 
@@ -118,7 +129,7 @@ EngineDesktopLifetime desktop;
 try
 {
     desktop = EngineDesktopLifetime.Create(
-        engine, config, configPath, args, sourceSelection, saveFrames, sink);
+        engine, config, configPath, args, sourceSelection, saveFrames, sink, singleInstance);
 }
 catch (Exception ex)
 {

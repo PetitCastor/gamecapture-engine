@@ -10,6 +10,12 @@ namespace GameCapture.Engine.Tray;
 /// Plugin management is the exception to that last part: installing or launching a plugin changes
 /// nothing the engine bound at startup, so it applies immediately and never restarts anything.
 /// </summary>
+/// <remarks>
+/// Not scoped to the tray: <see cref="EngineDesktopLifetime.Start"/> builds this (and
+/// <see cref="Plugins"/>) for every interactive run regardless of <c>trayEnabled</c> (TASK-UI-04) —
+/// the main window and the loopback control API are both consumers now, and <c>trayEnabled</c> only
+/// decides whether the <c>NotifyIcon</c> itself exists.
+/// </remarks>
 /// <param name="MonitorLabels">Display strings for each monitor, in the same order as the engine's
 /// monitor list, so the selected index maps straight to <see cref="EngineConfig.MonitorIndex"/>.</param>
 /// <param name="CurrentMonitorIndex">Index of the monitor currently being captured.</param>

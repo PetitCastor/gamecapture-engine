@@ -22,10 +22,11 @@ internal sealed class ControlApiState
     private volatile MetricsSnapshot? _latestMetrics;
 
     /// <summary>
-    /// The tray's callback bundle, once <see cref="EngineDesktopLifetime.Start"/> has built it.
-    /// <c>null</c> until then, and forever when the engine is interactive but the tray itself is
-    /// disabled (<c>TrayEnabled: false</c>) — the endpoints that need it degrade to 503 rather than
-    /// throwing.
+    /// The tray/window's callback bundle, once <see cref="EngineDesktopLifetime.Start"/> has built it.
+    /// <c>null</c> until then, and forever for a non-interactive run (replay/video) — the endpoints
+    /// that need it degrade to 503 rather than throwing. Built for every interactive run regardless of
+    /// <c>TrayEnabled</c>, which only gates whether a <c>NotifyIcon</c> exists (TASK-UI-04): the window
+    /// is the primary surface now, so settings/plugin management must work with the tray icon off.
     /// </summary>
     public TrayControls? Controls => _controls;
 

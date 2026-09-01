@@ -53,6 +53,45 @@ public sealed class EngineConfigSeedTests
     }
 
     [Fact]
+    public void MissingCloseToTrayNoticeShownKey_IsAddedFalseAndStamped()
+    {
+        var result = EngineConfigSeed.ApplyNewDefaults("""{ "hotkey": "Ctrl+Shift+F12" }""");
+
+        var root = (JsonObject)JsonNode.Parse(result)!;
+        Assert.False(root["closeToTrayNoticeShown"]!.GetValue<bool>());
+        Assert.True(root["configVersion"]!.GetValue<int>() >= 2);
+    }
+
+    [Fact]
+    public void ExistingCloseToTrayNoticeShownKey_IsNeverOverwritten()
+    {
+        var result = EngineConfigSeed.ApplyNewDefaults("""{ "closeToTrayNoticeShown": true }""");
+
+        var root = (JsonObject)JsonNode.Parse(result)!;
+        Assert.True(root["closeToTrayNoticeShown"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void FileStampedBeforeCloseToTrayNoticeShownExisted_StillOffersIt()
+    {
+        // Stamped at version 1 (theme only) — a file from before this key existed must still get it,
+        // the same way an unstamped file does.
+        var result = EngineConfigSeed.ApplyNewDefaults("""{ "configVersion": 1 }""");
+
+        var root = (JsonObject)JsonNode.Parse(result)!;
+        Assert.False(root["closeToTrayNoticeShown"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void AlreadyStampedFile_DoesNotResurrectARemovedCloseToTrayNoticeShown()
+    {
+        var result = EngineConfigSeed.ApplyNewDefaults("""{ "configVersion": 2 }""");
+
+        var root = (JsonObject)JsonNode.Parse(result)!;
+        Assert.False(root.ContainsKey("closeToTrayNoticeShown"));
+    }
+
+    [Fact]
     public void MalformedJson_IsReturnedUnchanged()
     {
         const string malformed = "{ not json";

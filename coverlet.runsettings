@@ -30,6 +30,12 @@
     gated (TrayViewBuilderTests, FrameRateTrackerTests). Tray/TrayControls.cs is a callback carrier whose
     only consumers are the excluded UI-edge files, so it is excluded too; Tray/EngineSettings.cs carries
     the value-equality the no-op-save guard relies on and stays gated (EngineSettingsTests).
+  - Shell/MainWindow.cs (TASK-UI-04) joins the same excluded UI-edge set as Tray/TrayApplication.cs: a
+    WinForms Form hosting a WebView2 control needs a real WebView2 runtime and a desktop to construct
+    at all. Shell/WindowChrome.cs (the DwmSetWindowAttribute P/Invoke wrapper) and Shell/SingleInstance.cs
+    (the mutex/event pair) are NOT excluded — both factor out cleanly enough to run headless (a
+    best-effort P/Invoke call that must never throw; a named-kernel-object handshake) and are directly
+    tested (WindowChromeTests, SingleInstanceTests).
   - Tray/PluginsForm.cs, Plugins/PluginInstaller.cs and Plugins/PluginLauncher.cs are the plugin
     manager's three edges: a WinForms dialog, the one HTTP client in the engine, and child-process
     start/stop. Everything they decide was pushed out into Plugins/PluginCatalog.cs (the trust rules),
@@ -78,6 +84,7 @@
             **/Tray/TrayControls.cs,
             **/Tray/TrayIconFactory.cs,
             **/Tray/PluginsForm.cs,
+            **/Shell/MainWindow.cs,
             **/Plugins/PluginInstaller.cs,
             **/Plugins/PluginLauncher.cs,
             **/Program.cs

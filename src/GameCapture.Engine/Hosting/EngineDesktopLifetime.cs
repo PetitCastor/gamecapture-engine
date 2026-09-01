@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using GameCapture.Engine.Metrics;
 using GameCapture.Engine.Plugins;
 using GameCapture.Engine.Tray;
+using GameCapture.Engine.Shell;
 
 namespace GameCapture.Engine;
 
@@ -22,6 +23,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
     private readonly FrameSourceSelection _sourceSelection;
     private readonly bool _saveFrames;
     private readonly ConsoleSink _sink;
+    private readonly SingleInstance? _singleInstance;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConsoleCancelEventHandler _cancelHandler;
 
@@ -42,7 +44,8 @@ internal sealed class EngineDesktopLifetime : IDisposable
         string[] args,
         FrameSourceSelection sourceSelection,
         bool saveFrames,
-        ConsoleSink sink)
+        ConsoleSink sink,
+        SingleInstance? singleInstance)
     {
         _engine = engine;
         _config = config;
@@ -51,6 +54,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
         _sourceSelection = sourceSelection;
         _saveFrames = saveFrames;
         _sink = sink;
+        _singleInstance = singleInstance;
 
         _cancelHandler = (_, eventArgs) =>
         {
@@ -62,6 +66,9 @@ internal sealed class EngineDesktopLifetime : IDisposable
 
     public CancellationToken CancellationToken => _shutdown.Token;
 
+    /// <param name="singleInstance">The process's <see cref="SingleInstance"/> guard, or
+    /// <c>null</c> in a context that never acquired one (e.g. a test harness). When present, a second
+    /// launch's handoff is wired to the main window once <see cref="Start"/> builds it.</param>
     public static EngineDesktopLifetime Create(
         EngineHost engine,
         EngineConfig config,
@@ -69,10 +76,11 @@ internal sealed class EngineDesktopLifetime : IDisposable
         string[] args,
         FrameSourceSelection sourceSelection,
         bool saveFrames,
-        ConsoleSink sink)
+        ConsoleSink sink,
+        SingleInstance? singleInstance = null)
     {
         var lifetime = new EngineDesktopLifetime(
-            engine, config, configPath, args, sourceSelection, saveFrames, sink);
+            engine, config, configPath, args, sourceSelection, saveFrames, sink, singleInstance);
 
         try
         {
@@ -103,9 +111,46 @@ internal sealed class EngineDesktopLifetime : IDisposable
                 _metrics.Sampled += controlApi.SetMetrics;
         }
 
-        if (!_config.TrayEnabled)
-            return;
+        // TASK-UI-04: the main window is the primary interactive surface and is built for every
+        // interactive run; trayEnabled below now only gates whether the NotifyIcon itself exists.
+        var controls = BuildInteractiveControls();
 
+        // ControlApiToken/ControlApiPort are guaranteed non-null here: this method only reaches this
+        // point for an interactive source, which is exactly what makes EngineHost.Create enable the
+        // control API, and Program.cs already awaited engine.StartAsync() (which resolves
+        // ControlApiPort) before constructing this lifetime.
+        _tray = new TrayApplication(
+            _sink,
+            _engine.Status,
+            _config.MetricsEnabled,
+            TimeSpan.FromMilliseconds(Math.Max(250, _config.MetricsIntervalMs)),
+            _engine.ControlApiPort!.Value,
+            _engine.ControlApiToken!.Value,
+            _config.Theme,
+            trayIconEnabled: _config.TrayEnabled,
+            closeToTrayNoticeAlreadyShown: _config.CloseToTrayNoticeShown,
+            markCloseToTrayNoticeShown: MarkCloseToTrayNoticeShown,
+            controls: controls,
+            singleInstance: _singleInstance);
+        _tray.Start();
+
+        // Feed the same sample stream the console status bar uses; the tray never ticks its own
+        // sampler (MetricsSampler is stateful and single-threaded by contract).
+        if (_metrics is not null)
+            _metrics.Sampled += _tray.OnMetrics;
+    }
+
+    /// <summary>
+    /// Builds <see cref="TrayControls"/> and <see cref="PluginServices"/> and publishes them to the
+    /// control API — for every interactive run, regardless of <c>trayEnabled</c> (TASK-UI-04 section
+    /// 7): the main window and the control API are both consumers now, not just the tray, and
+    /// <c>trayEnabled</c> only gates whether <see cref="TrayApplication"/> creates a
+    /// <c>NotifyIcon</c>. Split out from <see cref="Start"/> — which goes on to build that tray UI on
+    /// a real WinForms STA thread — so this half of the wiring can be exercised directly by a test
+    /// with no window or display involved.
+    /// </summary>
+    internal TrayControls BuildInteractiveControls()
+    {
         var currentSettings = new EngineSettings(
             _config.OutputDir,
             _config.OcrLanguage,
@@ -135,10 +180,11 @@ internal sealed class EngineDesktopLifetime : IDisposable
             }
         }
 
-        // Plugin management is scoped to the tray: it is the engine's only interactive surface, and a
-        // headless run has nobody to click Install. None of installer, launcher, or manager settings
-        // touch engine-config.json, so a plugin install never takes the restart path the settings
-        // callbacks below do.
+        // Plugin management used to be scoped to the tray; the loopback control API and the main
+        // window both need it too now (see TrayControls' updated XML doc), so it is built for every
+        // interactive run rather than only when trayEnabled is on. None of installer, launcher, or
+        // manager settings touch engine-config.json, so a plugin install never takes the restart path
+        // the settings callbacks below do.
         var pluginRoot = PluginPaths.DefaultRoot();
         _pluginInstaller = new PluginInstaller(pluginRoot);
         _pluginLauncher = new PluginLauncher();
@@ -151,29 +197,26 @@ internal sealed class EngineDesktopLifetime : IDisposable
             OnSelectMonitor: index =>
                 PersistAndRestart(new Dictionary<string, object> { ["monitorIndex"] = index }),
             OnUpdateSettings: UpdateSettings,
-            OnExit: _shutdown.Cancel,
+            // A real exit — tray Exit or POST /api/exit both funnel through this one delegate — must
+            // mark the main window as already exiting before cancelling, so its own FormClosing does
+            // not cancel this back into a hidden window (TASK-UI-04 section 5). _tray is read here,
+            // not captured, so it is safe for this closure to be built before the field below exists:
+            // by the time anything can actually invoke OnExit, Start() has already assigned it.
+            OnExit: () =>
+            {
+                _tray?.PrepareForExit();
+                _shutdown.Cancel();
+            },
             Plugins: new PluginServices(
                 _pluginInstaller,
                 _pluginLauncher,
                 PluginManagerSettings.Load(PluginPaths.SettingsFile(pluginRoot))));
 
-        // The control API drives the same callbacks and plugin services the tray does, so the two
-        // can never disagree about what an action did.
+        // The control API drives the same callbacks and plugin services the tray/window do, so all
+        // three can never disagree about what an action did.
         _engine.ControlApi?.SetControls(controls);
 
-        _tray = new TrayApplication(
-            _sink,
-            _engine.Status,
-            _config.MetricsEnabled,
-            TimeSpan.FromMilliseconds(Math.Max(250, _config.MetricsIntervalMs)),
-            controls);
-        _tray.Start();
-
-        // Feed the same sample stream the console status bar uses; the tray never ticks its own
-        // sampler (MetricsSampler is stateful and single-threaded by contract).
-        if (_metrics is not null)
-            _metrics.Sampled += _tray.OnMetrics;
-
+        return controls;
     }
 
     /// <summary>Relaunches after the engine has stopped and released its named pipe, if requested.</summary>
@@ -195,6 +238,14 @@ internal sealed class EngineDesktopLifetime : IDisposable
                 };
                 foreach (var argument in EngineRelaunch.StripPersistedOverrides(_args))
                     startInfo.ArgumentList.Add(argument);
+
+                // Released before the replacement process starts, not after: Program.cs holds this
+                // guard in a top-level `using` that would otherwise only dispose once RestartIfRequested
+                // returns — after Process.Start below. The child's own SingleInstance.Acquire() would
+                // see the mutex still held, treat itself as a duplicate launch, signal this (already
+                // exiting) instance, and exit 0 without ever starting the engine. Disposing here first
+                // is safe even if the caller later disposes the same guard again (Dispose is idempotent).
+                _singleInstance?.Dispose();
 
                 _sink.WriteLine("Restarting to apply settings…");
                 Process.Start(startInfo);
@@ -379,6 +430,12 @@ internal sealed class EngineDesktopLifetime : IDisposable
             return false;
         }
     }
+
+    // The main window's one-time close-to-tray balloon (TASK-UI-04 section 5) calls this the first
+    // time it fires; best-effort like every other config write here, since losing it just means the
+    // balloon can show once more on a future run rather than never again — not a functional problem,
+    // and never worth failing the hide-to-tray it rides along with.
+    private void MarkCloseToTrayNoticeShown() => Persist(new Dictionary<string, object> { ["closeToTrayNoticeShown"] = true });
 
     private void PersistAndRestart(IReadOnlyDictionary<string, object> changes)
     {

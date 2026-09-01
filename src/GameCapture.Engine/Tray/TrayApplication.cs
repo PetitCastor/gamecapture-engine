@@ -1,26 +1,27 @@
 using System.Diagnostics;
+using System.Drawing;
 using System.Windows.Forms;
 using GameCapture.Engine.Metrics;
 using GameCapture.Engine.Plugins;
+using GameCapture.Engine.Shell;
 
 namespace GameCapture.Engine.Tray;
 
 /// <summary>
-/// Hosts the Windows tray icon inside the engine process. Runs its own STA thread with a WinForms
-/// message loop; a UI timer polls <see cref="EngineStatus"/> and the latest metrics sample, composes
-/// a <see cref="TrayView"/>, and repaints the icon and tooltip. Left-clicking the icon never pops
-/// anything up. The right-click context menu carries a "Status…" popup entry, but only when a Visual
-/// Studio debugger is attached to the process — it is absent for a normal player-facing launch. When a
-/// <see cref="TrayControls"/> is supplied the menu also offers monitor selection, a settings screen and
-/// an exit action (always present, debugger or not); those callbacks are the host's, since applying any
-/// of them means persisting config and restarting. When that record also carries
-/// <see cref="Plugins.PluginServices"/>, the menu gains the plugin manager and a launch/stop entry per
-/// installed plugin — those act immediately, with no restart.
+/// Hosts the engine's desktop UI thread: a real <see cref="MainWindow"/> (TASK-UI-04's primary
+/// interactive surface) plus, when <c>trayEnabled</c>, a Windows tray <see cref="NotifyIcon"/> on the
+/// same STA thread and message loop. A UI timer polls <see cref="EngineStatus"/> and the latest
+/// metrics sample, composes a <see cref="TrayView"/>, and repaints the icon and tooltip — but only
+/// while the icon exists; with no icon there is nothing for that to update. The right-click context
+/// menu is <b>Show GameCapture</b> (default, brings the window forward), the per-installed-plugin
+/// launch/stop entries, a separator, and <b>Exit</b>.
 /// </summary>
 /// <remarks>
 /// UI/threading edge, excluded from the coverage gate. The decisions it makes about <em>what</em> to
 /// show live in <see cref="TrayViewBuilder"/> / <see cref="FrameRateTracker"/>, which are tested; this
-/// class is the wiring that cannot run without a desktop.
+/// class is the wiring that cannot run without a desktop. <see cref="Shell.MainWindow"/>,
+/// <see cref="Shell.WindowChrome"/> and <see cref="Shell.SingleInstance"/> carry the rest of TASK-UI-04's
+/// new surface — the latter two factor out cleanly enough to unit test on their own.
 /// </remarks>
 public sealed class TrayApplication : IDisposable
 {
@@ -28,39 +29,37 @@ public sealed class TrayApplication : IDisposable
     private readonly EngineStatus _status;
     private readonly bool _metricsEnabled;
     private readonly TimeSpan _pollInterval;
+    private readonly int _controlApiPort;
+    private readonly string _controlApiToken;
+    private readonly EngineTheme _theme;
+    private readonly bool _trayIconEnabled;
+    private readonly bool _closeToTrayNoticeAlreadyShown;
+    private readonly Action _markCloseToTrayNoticeShown;
     private readonly TrayControls? _controls;
+    private readonly SingleInstance? _singleInstance;
     private readonly ManualResetEventSlim _ready = new(false);
     private readonly FrameRateTracker _fps = new();
 
     /// <summary>
-    /// Whether the tray icon is actually up and running. False until <see cref="Start"/> returns, and
+    /// Whether the UI thread is actually up and running. False until <see cref="Start"/> returns, and
     /// stays false if setup threw (no interactive desktop — Session 0, some RDP configs) instead of
     /// reaching the message loop. Callers that only want to strip other UI (e.g. hide the console) once
-    /// the tray is confirmed as its replacement should gate on this rather than assume <see cref="Start"/>
+    /// this is confirmed as its replacement should gate on this rather than assume <see cref="Start"/>
     /// succeeding.
     /// </summary>
     public bool IsActive { get; private set; }
 
     private Thread? _thread;
     private NotifyIcon? _icon;
-    private StatusForm? _form;
+    private MainWindow? _mainWindow;
     private ContextMenuStrip? _menu;
     private System.Windows.Forms.Timer? _timer;
     private TrayIconFactory? _icons;
-    private ToolStripItem? _pluginsAnchor;
-    private PluginsForm? _pluginsDialog;
+    private ToolStripItem? _showAnchor;
     private long _lastPollTimestamp;
 
-    // Captured once at startup rather than read live from Debugger.IsAttached on every poll tick: the
-    // "Status…" menu item is only ever added once, at menu-build time, so whether the popup behind it
-    // gets kept up to date must follow that same one-time decision. A live re-read would drift out of
-    // sync the moment a debugger attaches or detaches from an already-running tray — either leaving a
-    // frozen, stale popup reachable after a detach, or resuming pointless formatting work after an
-    // attach with no menu entry to show it.
-    private bool _statusEnabled;
-
-    // The launch/stop entries currently spliced in below "Plugins…", tracked so they can be removed
-    // before each rebuild without disturbing the fixed items around them.
+    // The launch/stop entries currently spliced in below "Show GameCapture", tracked so they can be
+    // removed before each rebuild without disturbing the fixed items around them.
     private readonly List<ToolStripItem> _pluginItems = [];
 
     // Written from the metrics timer thread, read on the UI thread. A reference assignment is atomic
@@ -72,19 +71,33 @@ public sealed class TrayApplication : IDisposable
         EngineStatus status,
         bool metricsEnabled,
         TimeSpan pollInterval,
-        TrayControls? controls = null)
+        int controlApiPort,
+        string controlApiToken,
+        EngineTheme theme,
+        bool trayIconEnabled,
+        bool closeToTrayNoticeAlreadyShown,
+        Action markCloseToTrayNoticeShown,
+        TrayControls? controls = null,
+        SingleInstance? singleInstance = null)
     {
         _sink = sink;
         _status = status;
         _metricsEnabled = metricsEnabled;
         _pollInterval = pollInterval;
+        _controlApiPort = controlApiPort;
+        _controlApiToken = controlApiToken;
+        _theme = theme;
+        _trayIconEnabled = trayIconEnabled;
+        _closeToTrayNoticeAlreadyShown = closeToTrayNoticeAlreadyShown;
+        _markCloseToTrayNoticeShown = markCloseToTrayNoticeShown;
         _controls = controls;
+        _singleInstance = singleInstance;
     }
 
-    /// <summary>Starts the tray thread and blocks until the icon is live, so the caller can wire metrics.</summary>
+    /// <summary>Starts the UI thread and blocks until the window is live, so the caller can wire metrics.</summary>
     public void Start()
     {
-        _thread = new Thread(RunUiLoop) { IsBackground = true, Name = "GameCapture tray" };
+        _thread = new Thread(RunUiLoop) { IsBackground = true, Name = "GameCapture UI" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
         _ready.Wait();
@@ -93,60 +106,81 @@ public sealed class TrayApplication : IDisposable
     /// <summary>Latest process-health sample from <see cref="MetricsReporter"/>. Called off the UI thread.</summary>
     public void OnMetrics(MetricsSnapshot snapshot) => _latestMetrics = snapshot;
 
+    /// <summary>Marks a real exit as already underway (tray Exit, or <c>POST /api/exit</c> via
+    /// <see cref="TrayControls.OnExit"/>) so the main window's own close handler does not cancel it
+    /// back into a hidden window. Safe to call from any thread; a no-op before the window exists.</summary>
+    public void PrepareForExit() => _mainWindow?.PrepareForExit();
+
     private void RunUiLoop()
     {
         try
         {
-            Application.EnableVisualStyles();
-            _icons = new TrayIconFactory();
-            _form = new StatusForm();
-            // Force the window handle onto this STA thread now so Dispose()'s BeginInvoke always has a
-            // valid target. The handle is otherwise created lazily on the first Show(), and a run where
-            // the popup is never opened (no debugger attached, so "Status…" is never in the menu) would
-            // leave BeginInvoke to throw — ExitThread would never fire, the join would time out, and the
-            // NotifyIcon would linger as a ghost in the tray.
-            _ = _form.Handle;
-
-            _statusEnabled = Debugger.IsAttached;
-
-            _menu = new ContextMenuStrip();
-            // Debug-only convenience: never shown outside a Visual Studio debug session, and only ever
-            // reached from this menu entry — left-clicking the icon does not pop it up.
-            if (_statusEnabled)
-                _menu.Items.Add("Status…", null, (_, _) => ShowPopup());
-            BuildControlMenu(_menu);
-            // The installed set changes while the engine runs, but the menu is built once — so the
-            // launch/stop entries are rebuilt each time the menu opens rather than pinned here.
-            _menu.Opening += (_, _) => RebuildPluginItems();
-
-            _icon = new NotifyIcon
+            // Stable in this TFM (no WFO5001 suppression needed): themes the WinForms surfaces that
+            // are left once the client area is a self-theming WebView2 — chiefly the fallback error
+            // label shown when WebView2 itself fails to initialize. Called before EnableVisualStyles,
+            // matching documented WinForms dark-mode guidance for the two together.
+            Application.SetColorMode(_theme switch
             {
-                Visible = true,
-                Icon = _icons.For(TrayIconState.Idle),
-                Text = "GameCapture engine",
-                ContextMenuStrip = _menu,
-            };
+                EngineTheme.Dark => SystemColorMode.Dark,
+                EngineTheme.Light => SystemColorMode.Classic,
+                _ => SystemColorMode.System,
+            });
+            Application.EnableVisualStyles();
 
-            _lastPollTimestamp = Stopwatch.GetTimestamp();
-            Refresh();
+            _mainWindow = new MainWindow(
+                _controlApiPort,
+                _controlApiToken,
+                _theme,
+                closeToTrayEnabled: _trayIconEnabled,
+                closeToTrayNoticeAlreadyShown: _closeToTrayNoticeAlreadyShown,
+                onExitRequested: () => _controls?.OnExit(),
+                onFirstHideToTray: NotifyCloseToTrayFirstTime);
 
-            _timer = new System.Windows.Forms.Timer { Interval = (int)_pollInterval.TotalMilliseconds };
-            _timer.Tick += (_, _) => Refresh();
-            _timer.Start();
+            if (_singleInstance is not null)
+                _singleInstance.Signaled += OnSingleInstanceSignaled;
+
+            if (_trayIconEnabled)
+            {
+                _icons = new TrayIconFactory();
+
+                _menu = new ContextMenuStrip();
+                BuildMenu(_menu);
+                // The installed plugin set changes while the engine runs, but the menu is built once —
+                // so the launch/stop entries are rebuilt each time the menu opens rather than pinned here.
+                _menu.Opening += (_, _) => RebuildPluginItems();
+
+                _icon = new NotifyIcon
+                {
+                    Visible = true,
+                    Icon = _icons.For(TrayIconState.Idle),
+                    Text = "GameCapture engine",
+                    ContextMenuStrip = _menu,
+                };
+                _icon.DoubleClick += (_, _) => _mainWindow.ShowAndActivate();
+
+                _lastPollTimestamp = Stopwatch.GetTimestamp();
+                Refresh();
+
+                _timer = new System.Windows.Forms.Timer { Interval = (int)_pollInterval.TotalMilliseconds };
+                _timer.Tick += (_, _) => Refresh();
+                _timer.Start();
+            }
 
             IsActive = true;
             _ready.Set();
-            Application.Run(new ApplicationContext());
+            Application.Run(_mainWindow);
         }
         catch (Exception ex)
         {
-            // No interactive desktop (Windows service, Session 0, some RDP configs): disable the tray,
-            // never take the capture engine down with an unhandled exception on this STA thread.
+            // No interactive desktop (Windows service, Session 0, some RDP configs): disable the tray
+            // UI, never take the capture engine down with an unhandled exception on this STA thread.
             _sink.WriteLine($"[tray] disabled: {ex.Message}");
         }
         finally
         {
             _ready.Set(); // idempotent; guarantees Start() unblocks even if init threw before the Set above
+            if (_singleInstance is not null)
+                _singleInstance.Signaled -= OnSingleInstanceSignaled;
             _timer?.Dispose();
             if (_icon is not null)
             {
@@ -154,58 +188,64 @@ public sealed class TrayApplication : IDisposable
                 _icon.Dispose();
             }
             _menu?.Dispose();
-            _form?.Dispose();
+            _mainWindow?.Dispose();
             _icons?.Dispose();
         }
     }
 
-    private void ShowPopup()
+    // Runs on a thread-pool thread (see SingleInstance.Signaled); BeginInvoke marshals the actual
+    // show/restore/activate onto the UI thread.
+    private void OnSingleInstanceSignaled()
     {
-        Refresh();
-        _form!.ShowNear(Cursor.Position);
-    }
-
-    // Adds the control actions when the host wired them. Selecting a monitor or saving
-    // settings hands off to the host callback, which persists the change and restarts the engine — the
-    // captured monitor, OCR pack, output dir and scan cadence are all bound at startup.
-    private void BuildControlMenu(ContextMenuStrip menu)
-    {
-        if (_controls is not { } controls)
-            return;
-
-        var monitors = new ToolStripMenuItem("Capture monitor");
-        for (var i = 0; i < controls.MonitorLabels.Count; i++)
+        var window = _mainWindow;
+        if (window is { IsDisposed: false })
         {
-            var index = i; // capture the loop value, not the variable, for the click handler
-            var item = new ToolStripMenuItem(controls.MonitorLabels[i])
+            try
             {
-                Checked = index == controls.CurrentMonitorIndex,
-                CheckOnClick = false,
-            };
-            item.Click += (_, _) =>
+                window.BeginInvoke((Action)window.ShowAndActivate);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
             {
-                if (index != controls.CurrentMonitorIndex)
-                    controls.OnSelectMonitor(index);
-            };
-            monitors.DropDownItems.Add(item);
+                // The UI thread's handle is already gone; nothing left to show.
+            }
         }
-        if (controls.Plugins is not null)
-            _pluginsAnchor = menu.Items.Add("Plugins…", null, (_, _) => OpenPlugins(controls.Plugins));
-
-        if (monitors.HasDropDownItems)
-            menu.Items.Add(monitors);
-
-        menu.Items.Add("Settings…", null, (_, _) => OpenSettings(controls));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => controls.OnExit());
     }
 
-    // Replaces the per-plugin launch/stop entries that sit directly under "Plugins…". They are
-    // top-level rather than a submenu because starting a plugin is the action a user repeats; the
-    // dialog behind "Plugins…" is the occasional one.
+    // Called from MainWindow when it hides to tray for the first time this process — itself gated to
+    // fire only once per process by MainWindow's own latch, seeded from the persisted flag. Shows the
+    // one-time balloon (only reachable when the icon exists, since that is the only path that can
+    // hide-to-tray in the first place) and asks the host to persist the flag so it never fires again.
+    private void NotifyCloseToTrayFirstTime()
+    {
+        _icon?.ShowBalloonTip(
+            5000,
+            "GameCapture",
+            "GameCapture is still capturing. Right-click the tray icon to exit.",
+            ToolTipIcon.Info);
+        _markCloseToTrayNoticeShown();
+    }
+
+    // Builds the fixed part of the menu: "Show GameCapture" (bold, the default action) and, further
+    // down, Exit. The per-plugin entries are spliced in between by RebuildPluginItems, anchored on
+    // the "Show GameCapture" item.
+    private void BuildMenu(ContextMenuStrip menu)
+    {
+        var show = new ToolStripMenuItem("Show GameCapture", null, (_, _) => _mainWindow!.ShowAndActivate())
+        {
+            Font = new Font(menu.Font, FontStyle.Bold),
+        };
+        menu.Items.Add(show);
+        _showAnchor = show;
+
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Exit", null, (_, _) => _controls?.OnExit());
+    }
+
+    // Replaces the per-plugin launch/stop entries that sit directly under "Show GameCapture". They are
+    // top-level rather than a submenu because starting a plugin is the action a user repeats.
     private void RebuildPluginItems()
     {
-        if (_controls?.Plugins is not { } plugins || _menu is null || _pluginsAnchor is null)
+        if (_controls?.Plugins is not { } plugins || _menu is null || _showAnchor is null)
             return;
 
         foreach (var item in _pluginItems)
@@ -216,7 +256,7 @@ public sealed class TrayApplication : IDisposable
         _pluginItems.Clear();
 
         var running = plugins.Launcher.RunningIds;
-        var index = _menu.Items.IndexOf(_pluginsAnchor) + 1;
+        var index = _menu.Items.IndexOf(_showAnchor) + 1;
         foreach (var installed in plugins.Installer.State.Entries.Values.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
         {
             var isRunning = running.Contains(installed.Id);
@@ -248,41 +288,6 @@ public sealed class TrayApplication : IDisposable
         }
     }
 
-    private void OpenPlugins(PluginServices plugins)
-    {
-        using var dialog = new PluginsForm(plugins);
-        // Tracked so shutdown can close it. ShowDialog runs a nested message loop, so an engine
-        // shutdown while the manager is open would otherwise never reach Application.ExitThread: the
-        // join would time out, the host would dispose the installer and launcher under the still-open
-        // dialog, and the tray icon would linger until the user closed it by hand.
-        _pluginsDialog = dialog;
-        try
-        {
-            dialog.ShowDialog();
-        }
-        finally
-        {
-            _pluginsDialog = null;
-        }
-    }
-
-    private void OpenSettings(TrayControls controls)
-    {
-        using var dialog = new SettingsForm(controls.Settings, controls.AvailableOcrLanguages);
-        if (dialog.ShowDialog() == DialogResult.OK && dialog.Result != controls.Settings)
-        {
-            var result = controls.SaveSettings(dialog.Result);
-            if (!result.Succeeded)
-            {
-                MessageBox.Show(
-                    result.Error,
-                    "GameCapture",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
-        }
-    }
-
     private void Refresh()
     {
         try
@@ -295,11 +300,6 @@ public sealed class TrayApplication : IDisposable
             var view = TrayViewBuilder.Build(snapshot, _latestMetrics, _fps.Fps, _metricsEnabled);
             _icon!.Icon = _icons!.For(view.IconState);
             _icon.Text = view.Tooltip;
-            // The popup behind this can only ever be reached via the debug-gated "Status…" menu item,
-            // so formatting its contents when that item isn't in the menu would be pure wasted work on
-            // every poll tick for the life of the process.
-            if (_statusEnabled)
-                _form!.Update(view);
         }
         catch (Exception ex)
         {
@@ -313,19 +313,15 @@ public sealed class TrayApplication : IDisposable
     public void Dispose()
     {
         // Marshal the exit onto the UI thread; ExitThread ends Application.Run and lets RunUiLoop
-        // dispose the icon so it never lingers in the tray after shutdown.
-        var form = _form;
-        if (form is { IsDisposed: false })
+        // dispose the window/icon so neither lingers after shutdown. MainWindow is created eagerly
+        // and always has a handle by the time Dispose can run, so — unlike the StatusForm this class
+        // used to force a handle onto for exactly this reason — BeginInvoke always has a valid target.
+        var window = _mainWindow;
+        if (window is { IsDisposed: false })
         {
             try
             {
-                form.BeginInvoke((Action)(() =>
-                {
-                    // Close the plugin manager first: its nested modal loop owns the UI thread, and
-                    // ExitThread cannot end the outer loop while that one is running.
-                    _pluginsDialog?.Close();
-                    Application.ExitThread();
-                }));
+                window.BeginInvoke((Action)(() => Application.ExitThread()));
             }
             catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
             {
