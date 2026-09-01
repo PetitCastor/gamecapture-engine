@@ -200,7 +200,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
         // the settings callbacks below do.
         var pluginRoot = PluginPaths.DefaultRoot();
         _pluginInstaller = new PluginInstaller(pluginRoot);
-        _pluginLauncher = new PluginLauncher();
+        _pluginLauncher = new PluginLauncher { Logs = new PluginLogStore() };
         _roiOverlays = new RoiOverlayController(
             _pluginLauncher,
             _engine.Registry,

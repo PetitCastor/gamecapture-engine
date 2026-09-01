@@ -200,4 +200,39 @@ public class PluginRowBuilderTests
         Assert.True(row.CanShowRois);
         Assert.True(row.IsRoiOverlayVisible);
     }
+
+    /// <summary>
+    /// The "Show logs" button is driven by this flag alone, so the row has to carry it. It reports
+    /// whether a log buffer exists — that is, whether the plugin has ever been started — which is why
+    /// a stopped plugin can still offer its logs.
+    /// </summary>
+    [Fact]
+    public void HasLogs_IsCarriedToThePluginRow()
+    {
+        var row = Assert.Single(PluginRowBuilder.Build(
+            [Entry()],
+            new Dictionary<string, InstalledPlugin> { ["mission-plugin"] = Installed() },
+            [],
+            new Dictionary<string, string>(),
+            readHasLogs: _ => true));
+
+        Assert.True(row.HasLogs);
+        Assert.False(row.IsRunning);
+    }
+
+    /// <summary>
+    /// A plugin that has never run has nothing to show, and the builder must not invent a buffer for
+    /// it — the default has to stay false when no lookup is supplied at all.
+    /// </summary>
+    [Fact]
+    public void WithoutALogLookup_HasLogsIsFalse()
+    {
+        var row = Assert.Single(PluginRowBuilder.Build(
+            [Entry()],
+            new Dictionary<string, InstalledPlugin> { ["mission-plugin"] = Installed() },
+            [],
+            new Dictionary<string, string>()));
+
+        Assert.False(row.HasLogs);
+    }
 }
