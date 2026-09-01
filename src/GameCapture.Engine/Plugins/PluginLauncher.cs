@@ -162,38 +162,44 @@ public sealed class PluginLauncher : IDisposable
     /// <summary>Stops a plugin if this engine started it. No-op otherwise.</summary>
     public void Stop(string id)
     {
-        bool stopped;
+        Process? stopping;
         lock (_gate)
         {
-            stopped = _running.Remove(id, out var process);
-            if (stopped)
-            {
+            if (_running.Remove(id, out stopping))
                 Logs?.Append(id, PluginLogStream.Engine, "-- stopped by the engine --");
-                Terminate(process!);
-            }
         }
 
-        if (stopped)
-            Changed?.Invoke();
+        if (stopping is null)
+            return;
+
+        // Terminating outside the gate: a kill that has to wait out the full three seconds would
+        // otherwise stall every RunningIds and IsRunning call in the process — including the control
+        // API's poll timer — over one unresponsive plugin. Once it is out of _running nothing else can
+        // reach it, so no other path can terminate it a second time.
+        Terminate(stopping);
+        Changed?.Invoke();
     }
 
     public void Dispose()
     {
-        bool changed;
+        List<Process> stopping;
         lock (_gate)
         {
-            foreach (var (id, process) in _running)
-            {
+            foreach (var id in _running.Keys)
                 Logs?.Append(id, PluginLogStream.Engine, "-- stopped by the engine --");
-                Terminate(process);
-            }
 
-            changed = _running.Count > 0;
+            stopping = _running.Values.ToList();
             _running.Clear();
         }
 
+        // Same reasoning as Stop, and it matters more here: shutdown kills every plugin in turn, and
+        // holding the gate across all of them would block anything still asking about the running set
+        // for as long as the slowest one takes to die.
+        foreach (var process in stopping)
+            Terminate(process);
+
         // The buffers are not cleared: the launcher owns processes, not the record of what they said.
-        if (changed)
+        if (stopping.Count > 0)
             Changed?.Invoke();
     }
 

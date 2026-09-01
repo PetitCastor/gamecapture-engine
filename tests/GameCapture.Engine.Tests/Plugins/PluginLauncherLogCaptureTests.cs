@@ -164,6 +164,32 @@ public class PluginLauncherLogCaptureTests
     }
 
     /// <summary>
+    /// Stopping kills the child and records it, and the running set reflects that immediately — the
+    /// kill happens outside the lock, so this also covers that nothing was left half-removed by moving
+    /// it out.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public void StoppingAPlugin_RecordsTheNoticeAndClearsTheRunningSet()
+    {
+        var logs = new PluginLogStore();
+        using var launcher = new PluginLauncher { Logs = logs };
+        var plugin = SystemBinary("whoami-probe", "whoami.exe");
+
+        launcher.Start(plugin);
+
+        // Whether the child is still alive or has already exited on its own is a race this must not
+        // care about: Stop removes it either way, and Terminate tolerates a process that is gone.
+        launcher.Stop(plugin.Id);
+
+        Assert.False(launcher.IsRunning(plugin.Id));
+        Assert.DoesNotContain(plugin.Id, launcher.RunningIds);
+        Assert.Contains(
+            logs.Read(plugin.Id, after: -1, limit: 100).Lines,
+            line => line.Stream == PluginLogStream.Engine && line.Text == "-- stopped by the engine --");
+    }
+
+    /// <summary>
     /// A launcher without a store must not redirect anything: the child keeps inheriting the engine's
     /// streams, which is what every existing test that only cares about the running set relies on.
     /// </summary>
