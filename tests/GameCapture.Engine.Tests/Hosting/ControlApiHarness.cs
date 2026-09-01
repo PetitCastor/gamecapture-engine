@@ -57,6 +57,10 @@ internal sealed class ControlApiHarness : IAsyncDisposable
     public int ExitCount => _readExitCount();
     public PluginInstaller Installer => _installer;
     public PluginLauncher Launcher => _launcher;
+
+    /// <summary>The capture buffers behind <c>GET /api/plugins/{id}/logs</c>, seeded directly by tests
+    /// so the endpoint can be driven without a child process.</summary>
+    public PluginLogStore Logs => _launcher.Logs!;
     public PluginManagerSettings PluginSettings => _controls.Plugins!.Settings;
 
     public int Port => _engine.ControlApiPort!.Value;
@@ -189,7 +193,9 @@ internal sealed class ControlApiHarness : IAsyncDisposable
 
         var pluginRoot = Path.Combine(tempDir, "plugins");
         var installer = new PluginInstaller(pluginRoot, catalogHandler ?? new EmptyCatalogHandler());
-        var launcher = new PluginLauncher();
+        // The store is the seam that lets the logs endpoint be exercised end to end without launching
+        // anything: a test seeds it directly and the API reads the same buffers a real child would fill.
+        var launcher = new PluginLauncher { Logs = new PluginLogStore() };
         var exitCount = 0;
 
         var controls = new TrayControls(

@@ -10,6 +10,11 @@ namespace GameCapture.Engine.Plugins;
 /// <param name="LatestVersion">Latest release tag, or empty when the probe did not resolve one.</param>
 /// <param name="IsRunning">Whether this engine launched the plugin and its process is still alive.</param>
 /// <param name="UpdatesPaused">Whether a retained preview is intentionally excluded from preview updates.</param>
+/// <param name="HasLogs">Whether this engine has captured output for the plugin — that is, whether it
+/// has been started at least once since the engine came up. Not "has printed something": a buffer
+/// exists from the moment the process starts, which is exactly when
+/// <see cref="PluginLauncher.Changed"/> already fires, so the existing push carries this with no extra
+/// wiring. A plugin that starts and stays silent shows the button over a panel that says so.</param>
 public sealed record PluginRow(
     CatalogEntry Entry,
     PluginRowState State,
@@ -18,7 +23,8 @@ public sealed record PluginRow(
     bool IsRunning,
     bool UpdatesPaused,
     bool CanShowRois = false,
-    bool IsRoiOverlayVisible = false)
+    bool IsRoiOverlayVisible = false,
+    bool HasLogs = false)
 {
     /// <summary>Catalog id, the key everything else is addressed by.</summary>
     public string Id => Entry.Id;

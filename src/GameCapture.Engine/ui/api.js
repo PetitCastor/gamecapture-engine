@@ -53,6 +53,7 @@ export const api = {
   getStatus: () => get("/api/status"),
   getMonitors: () => get("/api/monitors"),
   getPlugins: () => get("/api/plugins"),
+  getPluginLogs: (id, after) => get(`/api/plugins/${encodeURIComponent(id)}/logs?after=${after}`),
   getSettings: () => get("/api/settings"),
   saveSettings: (patch) => post("/api/settings", patch),
   browseFolder: (initialDirectory) => post("/api/settings/browse", { initialDirectory }),

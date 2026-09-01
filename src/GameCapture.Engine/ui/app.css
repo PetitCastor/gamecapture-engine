@@ -329,6 +329,54 @@ svg { display: block; }
   flex-wrap: wrap;
 }
 
+.plugin-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.plugin-logs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.plugin-logs-header h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.plugin-logs-close { padding: 4px 8px; }
+.plugin-log-status {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.plugin-log-status.is-error { color: var(--danger); }
+.plugin-log-status.is-warning { color: var(--accent-2); }
+.plugin-log-output {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 11px/1.5 ui-monospace, "Cascadia Mono", monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.plugin-log-line { display: block; }
+.plugin-log-stream {
+  display: inline-block;
+  width: 54px;
+  color: var(--text-dim);
+}
+.stream-stderr .plugin-log-stream { color: var(--danger); }
+.stream-engine .plugin-log-stream { color: var(--accent-2); }
+
 /* Additive, not part of the approved mock (which never models a failed action): inline row-level
    error text for TASK-UI-05 section 4's "errors render inline on the row, not as a dialog" — reuses
    --danger, the token the design already carries for exactly this purpose. */

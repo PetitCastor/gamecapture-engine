@@ -49,7 +49,10 @@
     Plugins/ReleaseVersionResolver.cs, Plugins/PluginPaths.cs, Plugins/PluginInstallState.cs and
     Plugins/PluginRowBuilder.cs, all of which are pure and stay gated. That split is the point: the
     rules that keep a download on the plugins repository and inside the plugin folder are testable
-    without a network or a desktop.
+    without a network or a desktop. Plugin log capture follows the same split: the ring itself
+    (Plugins/PluginLogBuffer.cs, Plugins/PluginLogStore.cs) and the redirect/decode decisions
+    (Plugins/PluginProcessCapture.cs) are pure and gated, leaving only the Start/BeginOutputReadLine
+    sequencing behind the launcher's exclusion.
 
   TASK-8's brief also listed Hosting/HotkeyListener.cs and Processing/OcrPipeline.cs as process-edge files
   to exclude. They are deliberately NOT excluded, because the same task moved 28 tests onto their

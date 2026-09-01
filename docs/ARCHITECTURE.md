@@ -112,6 +112,16 @@ plain ES modules, no bundler).
 - **Loopback-only**: Kestrel binds the control API to `127.0.0.1` on a dynamically chosen port — there
   is no fixed port to document, and the middleware in `ControlApi.Map` refuses any non-GET/HEAD
   request from a remote peer outright, on top of the token gate.
+- **Plugin log capture**: plugins are launched with their stdout and stderr redirected
+  (`Plugins/PluginProcessCapture.cs`) into a bounded in-memory ring per catalog id
+  (`Plugins/PluginLogStore.cs`, 2,000 lines / 1 MB per plugin). **Nothing is written to disk.** A
+  buffer opens when the process starts, so a plugin that dies during startup still has its stderr and
+  its exit code to show, and it outlives the process — a stopped row can still be read from. Buffers
+  end only on uninstall and on engine exit. The UI reads them by polling
+  `GET /api/plugins/{id}/logs` with a sequence cursor rather than over `/api/events`: the response's
+  `nextSequence` is the final delivered line and is sent back as the exclusive `after` cursor on the
+  next poll. That hub has no per-client subscription — every message goes to every socket — and is
+  built around a change-only push at 250 ms or slower, not one broadcast per line of a chatty plugin.
 - **Disabled for non-interactive runs**: `--replay`/`--video` (without `--video-realtime`) never
   start the control API, the window, or the tray at all — nothing needs a UI to drive a batch corpus
   run, and there is no operator present to click anything (`EngineDesktopLifetime.Start`'s

@@ -19,7 +19,8 @@ internal static class PluginRowBuilder
         IReadOnlyCollection<string> runningIds,
         IReadOnlyDictionary<string, string> latestVersions,
         IReadOnlyCollection<string>? updatesPausedIds = null,
-        Func<CatalogEntry, RoiOverlayState>? readRoiOverlayState = null)
+        Func<CatalogEntry, RoiOverlayState>? readRoiOverlayState = null,
+        Func<CatalogEntry, bool>? readHasLogs = null)
     {
         var rows = new List<PluginRow>(catalog.Count);
 
@@ -54,7 +55,8 @@ internal static class PluginRowBuilder
                 runningIds.Contains(entry.Id),
                 updatesPaused,
                 roiOverlay.CanShow,
-                roiOverlay.IsVisible));
+                roiOverlay.IsVisible,
+                readHasLogs?.Invoke(entry) ?? false));
         }
 
         return rows;

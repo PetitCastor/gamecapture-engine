@@ -365,6 +365,182 @@ public class ControlApiTests
     }
 
     [Fact]
+    public async Task PluginLogs_WithoutAToken_Are401()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+        using var client = harness.UnauthenticatedClient();
+
+        var response = await client.GetAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PluginLogs_ForAnUnknownId_Are400()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+        using var client = harness.AuthorizedClient();
+
+        var response = await client.GetAsync("/api/plugins/no-such-plugin/logs");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("unknown plugin id", body.GetProperty("error").GetString());
+    }
+
+    /// <summary>
+    /// A known plugin that has never been started is not an error — the drawer needs to be able to say
+    /// "no output yet" rather than render a failure.
+    /// </summary>
+    [Fact]
+    public async Task PluginLogs_ForAPluginThatNeverStarted_ReturnAnEmptyPage()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+
+        // Populates the catalog cache, so the id resolves without the plugin ever having run.
+        await client.GetAsync("/api/plugins");
+
+        var body = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs");
+
+        Assert.False(body.GetProperty("hasBuffer").GetBoolean());
+        Assert.Empty(body.GetProperty("lines").EnumerateArray());
+    }
+
+    /// <summary>
+    /// Pins the wire shape the drawer reads, including that PluginLogStream camelCases to "stdout" /
+    /// "stderr" through <c>ControlApiJson.Options</c> rather than serializing as a number.
+    /// </summary>
+    [Fact]
+    public async Task PluginLogs_ReturnSeededLinesWithCamelCaseFields()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        await client.GetAsync("/api/plugins");
+
+        harness.Logs.Open(FakePluginCatalogHandler.PluginId);
+        harness.Logs.Append(FakePluginCatalogHandler.PluginId, PluginLogStream.Stdout, "waiting for engine");
+        harness.Logs.Append(FakePluginCatalogHandler.PluginId, PluginLogStream.Stderr, "invalid output configuration: nope");
+
+        var body = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs");
+
+        Assert.True(body.GetProperty("hasBuffer").GetBoolean());
+        Assert.Equal(1, body.GetProperty("nextSequence").GetInt64());
+        Assert.False(body.GetProperty("truncated").GetBoolean());
+
+        var lines = body.GetProperty("lines").EnumerateArray().ToList();
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(0, lines[0].GetProperty("sequence").GetInt64());
+        Assert.Equal("stdout", lines[0].GetProperty("stream").GetString());
+        Assert.Equal("waiting for engine", lines[0].GetProperty("text").GetString());
+        Assert.Equal("stderr", lines[1].GetProperty("stream").GetString());
+        Assert.True(lines[1].TryGetProperty("timestamp", out _));
+    }
+
+    [Fact]
+    public async Task PluginLogs_WithACursor_ReturnOnlyNewLines()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        await client.GetAsync("/api/plugins");
+
+        harness.Logs.Open(FakePluginCatalogHandler.PluginId);
+        foreach (var i in Enumerable.Range(0, 4))
+            harness.Logs.Append(FakePluginCatalogHandler.PluginId, PluginLogStream.Stdout, $"line {i}");
+
+        var body = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs?after=1");
+
+        var texts = body.GetProperty("lines").EnumerateArray()
+            .Select(line => line.GetProperty("text").GetString())
+            .ToList();
+        Assert.Equal(["line 2", "line 3"], texts);
+    }
+
+    [Fact]
+    public async Task PluginLogs_RespectTheLimit()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        await client.GetAsync("/api/plugins");
+
+        harness.Logs.Open(FakePluginCatalogHandler.PluginId);
+        foreach (var i in Enumerable.Range(0, 10))
+            harness.Logs.Append(FakePluginCatalogHandler.PluginId, PluginLogStream.Stdout, $"line {i}");
+
+        var body = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs?limit=3");
+
+        Assert.Equal(3, body.GetProperty("lines").GetArrayLength());
+        Assert.Equal(2, body.GetProperty("nextSequence").GetInt64());
+    }
+
+    [Fact]
+    public async Task PluginLogs_NextSequenceCanBeReusedAsTheExclusiveCursor()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        await client.GetAsync("/api/plugins");
+
+        harness.Logs.Open(FakePluginCatalogHandler.PluginId);
+        foreach (var i in Enumerable.Range(0, 4))
+            harness.Logs.Append(FakePluginCatalogHandler.PluginId, PluginLogStream.Stdout, $"line {i}");
+
+        var first = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs?limit=2");
+        var cursor = first.GetProperty("nextSequence").GetInt64();
+
+        var second = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/logs?after={cursor}");
+
+        Assert.Equal(1, cursor);
+        Assert.Equal(
+            ["line 2", "line 3"],
+            second.GetProperty("lines").EnumerateArray().Select(line => line.GetProperty("text").GetString()));
+    }
+
+    /// <summary>
+    /// The button appears on any plugin with a buffer, running or not — that is the whole point of the
+    /// buffer outliving the process — so the row's flag has to be on the wire.
+    /// </summary>
+    [Fact]
+    public async Task PluginRows_ExposeHasLogsOnceAPluginHasABuffer()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+
+        var before = await client.GetFromJsonAsync<JsonElement>("/api/plugins");
+        Assert.False(before.EnumerateArray().First().GetProperty("hasLogs").GetBoolean());
+
+        harness.Logs.Open(FakePluginCatalogHandler.PluginId);
+
+        var after = await client.GetFromJsonAsync<JsonElement>("/api/plugins");
+        Assert.True(after.EnumerateArray().First().GetProperty("hasLogs").GetBoolean());
+    }
+
+    /// <summary>
+    /// Uninstalling is the one thing that ends a buffer's life before the engine exits: keeping output
+    /// for a plugin the user has deleted would leave a row-less buffer nothing can ever show.
+    /// </summary>
+    [Fact]
+    public async Task UninstallingAPlugin_DropsItsLogBuffer()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+
+        var install = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/install", null);
+        install.EnsureSuccessStatusCode();
+        harness.Logs.Open(FakePluginCatalogHandler.PluginId);
+
+        var uninstall = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/uninstall", null);
+        uninstall.EnsureSuccessStatusCode();
+
+        Assert.False(harness.Logs.Has(FakePluginCatalogHandler.PluginId));
+    }
+
+    [Fact]
     public async Task ConcurrentPluginActionForTheSameId_Returns409()
     {
         var handler = new FakePluginCatalogHandler { BlockDownloads = true };

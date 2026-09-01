@@ -281,6 +281,31 @@ process and never requires elevation. A `Cleared` record hides it; `lingerMs: 0`
 Unlike the file and HTTP sinks, the overlay receives every observation and clear so the on-screen
 state stays current; it is intentionally not change-deduplicated.
 
+## Your console output, seen from the engine
+
+When the engine launches your plugin, it redirects the child's stdout and stderr and keeps them in a
+bounded in-memory ring, which the main window shows behind **Show logs** on the plugin's row. You do
+not opt into this and there is nothing to call: keep writing ordinary console text.
+
+What follows from that:
+
+- `Console.IsOutputRedirected` is true, so `ConsoleSink`'s live status row disables itself and
+  `UpdateStatus` is dropped. That is by design — never put anything load-bearing there. `Log` and
+  `LogVerbose` are captured normally.
+- `Console.Error` is captured too and rendered in the danger colour, which is where the host's usage
+  and `invalid output configuration:` failures already go.
+- Prefer one `WriteLine` per logical line. A multi-line write is split on newlines by the engine, so
+  it still reads correctly, but the line budget counts the result.
+- Only the last **2,000 lines** (or 1 MB, whichever comes first) are retained per plugin, and a line
+  longer than 2,000 characters is truncated with an ellipsis. The panel says so when it has discarded
+  anything.
+- **Nothing is persisted.** The buffer lives in the engine's memory, survives your plugin's exit so a
+  startup crash is still readable, and is gone when the plugin is uninstalled or the engine closes.
+  This is a diagnostic view, not an audit log — anything that has to survive belongs in a record sink.
+- Treat your output as **ASCII**. A redirected .NET console encodes with the console code page and
+  best-fit-maps what it cannot represent (an em dash arrives as `-`), so non-ASCII is already lossy on
+  the way out of your process, before the engine reads a byte.
+
 ## 4. ROIs: space, scale, calibration
 
 **Reference space is 2560x1440, always.** A ROI is declared against that grid and the *engine*

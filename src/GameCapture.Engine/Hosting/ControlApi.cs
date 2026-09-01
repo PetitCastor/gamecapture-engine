@@ -172,6 +172,25 @@ internal static class ControlApi
             }
         });
 
+        // Read-only, so no inFlight guard: nothing here mutates a plugin and two readers cannot collide.
+        // The drawer polls this with a cursor rather than riding /api/events, because that hub has no
+        // per-client subscription — every message goes to every socket — and was built for a change-only
+        // push at 250 ms or slower, not for one broadcast per line of a chatty plugin.
+        app.MapGet("/api/plugins/{id}/logs", (string id, long? after, int? limit) =>
+        {
+            if (state.Controls?.Plugins is not { } plugins)
+                return ServiceUnavailable("plugin management is unavailable");
+            if (plugins.Launcher.Logs is not { } logs)
+                return ServiceUnavailable("plugin logs are unavailable");
+            if (FindEntry(id, plugins) is null)
+                return BadRequest("unknown plugin id");
+
+            // A plugin that has never been started reads as an empty page, not a 404: "produced no
+            // output" is a normal answer for a row whose button is showing.
+            var page = logs.Read(id, after ?? -1, Math.Clamp(limit ?? PluginLogStore.DefaultMaxLines, 0, PluginLogStore.DefaultMaxLines));
+            return Results.Json(page, JsonOptions);
+        });
+
         // Not a per-plugin action, so it stands alongside them rather than under /api/plugins/{id}/*:
         // toggles PluginManagerSettings.IncludePreviews (the one plugin-manager preference the deleted
         // PluginsForm used to own, TASK-UI-05 section 4/7) and hands back the same row shape /api/plugins
@@ -461,6 +480,10 @@ internal static class ControlApi
                             if (!plugins.Installer.State.TryGet(id, out _))
                                 return BadRequest("unknown plugin id");
                             plugins.Launcher.Stop(id);
+                            // After the stop, never before: a plugin still running could reopen a
+                            // buffer between the drop and the kill and leave one behind for a plugin
+                            // that no longer exists.
+                            plugins.Launcher.Logs?.Drop(id);
                             plugins.Installer.Uninstall(id);
                             break;
                         }
