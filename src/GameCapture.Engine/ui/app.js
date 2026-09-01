@@ -53,10 +53,10 @@ watchSystemTheme(() => {
 // ---------- Header: status ----------
 
 const STATUS_COLOR_VAR = {
-  Capturing: "--ok",
-  Idle: "--text-dim",
-  Replay: "--accent-2",
-  Error: "--danger",
+  capturing: "--ok",
+  idle: "--text-dim",
+  replay: "--accent-2",
+  error: "--danger",
 };
 
 const statusPill = document.getElementById("status-pill");
@@ -238,8 +238,9 @@ async function runPluginAction(id, action) {
       stop: api.stopPlugin,
     };
     await actionsById[action](id);
-    // The "plugins" WebSocket push (fired by the installer/launcher's own Changed event) re-renders
-    // the list with the new state; nothing further to do on success.
+    // The socket normally pushes this change, but it may still be connecting or reconnecting when an
+    // action finishes. Re-read here so the UI converges even when that one push was missed.
+    renderPluginList(await api.getPlugins());
   } catch (err) {
     pluginRowErrors.set(id, err.message);
   } finally {
