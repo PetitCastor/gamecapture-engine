@@ -138,7 +138,8 @@ internal sealed class FrameSourceFactory
                 .Select((item, index) =>
                     $"[{index}] {item.DeviceName} {item.Width}x{item.Height}{(item.IsPrimary ? " (primary)" : "")}")
                 .ToList(),
-            CurrentMonitorIndex: monitorIndex));
+            CurrentMonitorIndex: monitorIndex,
+            CaptureMonitor: monitor));
     }
 
     private async Task<FrameSourceCreationResult> CreateVideoAsync()

@@ -13,6 +13,8 @@ namespace GameCapture.Engine.Plugins;
 /// <param name="InstalledUtc">When the install completed.</param>
 /// <param name="DownloadUrl">Immutable asset URL used for the install, retained for a paused preview.</param>
 /// <param name="Channel">Release channel at install time; missing legacy values are stable.</param>
+/// <param name="ClientName">Optional capture-client identity persisted from the catalog, so an
+/// orphaned installed row remains eligible for the runtime diagnostic overlay.</param>
 public sealed record InstalledPlugin(
     string Id,
     string Name,
@@ -20,4 +22,5 @@ public sealed record InstalledPlugin(
     string ExecutablePath,
     DateTimeOffset InstalledUtc,
     string DownloadUrl = "",
-    ReleaseChannel Channel = ReleaseChannel.Stable);
+    ReleaseChannel Channel = ReleaseChannel.Stable,
+    string ClientName = "");

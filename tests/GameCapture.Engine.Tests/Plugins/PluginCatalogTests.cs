@@ -15,6 +15,7 @@ public class PluginCatalogTests
           {
             "id": "mission-plugin",
             "name": "MissionPlugin",
+            "clientName": "missions",
             "description": "Watches the mission board.",
             "downloadUrl": "https://github.com/PetitCastor/gamecapture-plugins/releases/latest/download/MissionPlugin-win-x64.zip"
           }
@@ -29,10 +30,19 @@ public class PluginCatalogTests
         var entry = Assert.Single(entries);
         Assert.Equal("mission-plugin", entry.Id);
         Assert.Equal("MissionPlugin", entry.Name);
+        Assert.Equal("missions", entry.ClientName);
         Assert.Equal("Watches the mission board.", entry.Description);
         Assert.EndsWith("MissionPlugin-win-x64.zip", entry.DownloadUrl, StringComparison.Ordinal);
         Assert.Equal(ReleaseChannel.Stable, entry.Channel);
         Assert.Equal("", error);
+    }
+
+    [Fact]
+    public void TryParse_LegacyCatalogWithoutClientName_RemainsUsableButCannotIdentifyAConnection()
+    {
+        Assert.True(PluginCatalog.TryParse("""[{ "id": "mission-plugin", "name": "MissionPlugin", "description": "d", "downloadUrl": "https://github.com/PetitCastor/gamecapture-plugins/releases/latest/download/MissionPlugin-win-x64.zip" }]""", out var entries, out _));
+
+        Assert.Equal("", Assert.Single(entries).ClientName);
     }
 
     [Fact]

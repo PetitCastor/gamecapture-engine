@@ -6,7 +6,7 @@ namespace GameCapture.Engine.Plugins;
 /// what a row says or offers is made here and pinned by tests, mirroring how
 /// <see cref="Tray.TrayViewBuilder"/> owns the tray's display decisions.
 /// </summary>
-public static class PluginRowBuilder
+internal static class PluginRowBuilder
 {
     /// <param name="catalog">Entries as published, in catalog order.</param>
     /// <param name="installed">Install state, keyed by catalog id.</param>
@@ -18,7 +18,8 @@ public static class PluginRowBuilder
         IReadOnlyDictionary<string, InstalledPlugin> installed,
         IReadOnlyCollection<string> runningIds,
         IReadOnlyDictionary<string, string> latestVersions,
-        IReadOnlyCollection<string>? updatesPausedIds = null)
+        IReadOnlyCollection<string>? updatesPausedIds = null,
+        Func<CatalogEntry, RoiOverlayState>? readRoiOverlayState = null)
     {
         var rows = new List<PluginRow>(catalog.Count);
 
@@ -44,13 +45,16 @@ public static class PluginRowBuilder
                         ? PluginRowState.UpdateAvailable
                         : PluginRowState.Installed;
 
+            var roiOverlay = readRoiOverlayState?.Invoke(entry) ?? default;
             rows.Add(new PluginRow(
                 entry,
                 state,
                 isInstalled ? record!.Version : "",
                 latest,
                 runningIds.Contains(entry.Id),
-                updatesPaused));
+                updatesPaused,
+                roiOverlay.CanShow,
+                roiOverlay.IsVisible));
         }
 
         return rows;

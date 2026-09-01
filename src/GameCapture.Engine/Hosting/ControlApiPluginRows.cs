@@ -13,7 +13,8 @@ internal static class ControlApiPluginRows
             plugins.Installer.State.Entries,
             plugins.Launcher.RunningIds,
             latestVersions,
-            PausedPreviewIds(plugins));
+            PausedPreviewIds(plugins),
+            entry => plugins.RoiOverlays?.GetState(entry) ?? default);
 
     public static IReadOnlyList<CatalogEntry> MergeInstalled(IReadOnlyList<CatalogEntry> catalog, PluginServices plugins)
     {
@@ -24,7 +25,7 @@ internal static class ControlApiPluginRows
             if (catalogIds.Contains(installed.Id))
                 continue;
 
-            merged.Add(new CatalogEntry(installed.Id, installed.Name, "", installed.DownloadUrl, installed.Channel));
+            merged.Add(new CatalogEntry(installed.Id, installed.Name, "", installed.DownloadUrl, installed.Channel, installed.ClientName));
         }
 
         return merged;

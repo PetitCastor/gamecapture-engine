@@ -8,4 +8,5 @@ internal sealed record FrameSourceSelection(
     IFrameSource Source,
     string Description,
     IReadOnlyList<string> MonitorLabels,
-    int CurrentMonitorIndex);
+    int CurrentMonitorIndex,
+    MonitorInfo? CaptureMonitor = null);

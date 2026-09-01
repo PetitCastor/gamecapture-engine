@@ -33,6 +33,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
     private TrayApplication? _tray;
     private PluginInstaller? _pluginInstaller;
     private PluginLauncher? _pluginLauncher;
+    private RoiOverlayController? _roiOverlays;
     private bool _restartRequested;
     private bool _stopped;
     private bool _disposed;
@@ -200,6 +201,12 @@ internal sealed class EngineDesktopLifetime : IDisposable
         var pluginRoot = PluginPaths.DefaultRoot();
         _pluginInstaller = new PluginInstaller(pluginRoot);
         _pluginLauncher = new PluginLauncher();
+        _roiOverlays = new RoiOverlayController(
+            _pluginLauncher,
+            _engine.Registry,
+            _engine.Status,
+            _sourceSelection,
+            new RoiOverlayRenderer(_sink));
 
         var controls = new TrayControls(
             _sourceSelection.MonitorLabels,
@@ -222,7 +229,10 @@ internal sealed class EngineDesktopLifetime : IDisposable
             Plugins: new PluginServices(
                 _pluginInstaller,
                 _pluginLauncher,
-                PluginManagerSettings.Load(PluginPaths.SettingsFile(pluginRoot))),
+                PluginManagerSettings.Load(PluginPaths.SettingsFile(pluginRoot)))
+            {
+                RoiOverlays = _roiOverlays,
+            },
             // Same lazy-resolution pattern as OnExit above: _tray is read at call time, not captured,
             // so this closure is safe to build before Start() assigns it.
             OnBrowseFolder: initialDirectory => _tray?.BrowseForFolderAsync(initialDirectory) ?? Task.FromResult<string?>(null));
@@ -284,6 +294,7 @@ internal sealed class EngineDesktopLifetime : IDisposable
             return;
 
         _tray?.Dispose();    // remove the icon before the console summary prints
+        _roiOverlays?.Dispose();
         // After the tray, so no menu entry can start a plugin the engine is about to stop tracking.
         // A settings change restarts the engine through this same path: plugins launched from the
         // tray are stopped with it and are not brought back by the relaunched process.

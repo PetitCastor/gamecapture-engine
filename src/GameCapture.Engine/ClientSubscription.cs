@@ -18,6 +18,7 @@ internal sealed class ClientSubscription
     private const int OutboundCapacity = 4;
 
     private readonly Action<ClientSubscription>? _onNameChanged;
+    private readonly Action? _onChanged;
 
     // Full-replacement swap under volatile: the scan loop reads this on every tick while a
     // RoiSetUpdate may be arriving on the request-pump thread. Swapping the whole list (never
@@ -34,9 +35,10 @@ internal sealed class ClientSubscription
     /// <param name="replayMode">Selects the overflow policy; see <see cref="Out"/>.</param>
     /// <param name="onNameChanged">Invoked when the client's Hello arrives, so the registry can
     /// refresh the status snapshot without the connection knowing about EngineStatus.</param>
-    public ClientSubscription(bool replayMode, Action<ClientSubscription>? onNameChanged = null)
+    public ClientSubscription(bool replayMode, Action<ClientSubscription>? onNameChanged = null, Action? onChanged = null)
     {
         _onNameChanged = onNameChanged;
+        _onChanged = onChanged;
 
         Out = Channel.CreateBounded<TrackResponse>(new BoundedChannelOptions(OutboundCapacity)
         {
@@ -63,6 +65,7 @@ internal sealed class ClientSubscription
         {
             _name = value;
             _onNameChanged?.Invoke(this);
+            _onChanged?.Invoke();
         }
     }
 
@@ -84,5 +87,6 @@ internal sealed class ClientSubscription
     {
         _rois = update.Rois.ToArray();
         _hasSubscribed = true;
+        _onChanged?.Invoke();
     }
 }

@@ -253,10 +253,7 @@ public sealed class CaptureGrpcService : CaptureEngineService.CaptureEngineServi
         else
         {
             var reference = (request.Roi ?? new Rect()).ToRoiRect();
-            ScanLoop.EnsureRoiInFrame(reference, bitmap.PixelWidth, bitmap.PixelHeight);
-
-            var frameRect = RoiScaler.ToFrame(reference, bitmap.PixelWidth, bitmap.PixelHeight);
-            var bounds = OcrPipeline.ClampToBitmap(frameRect.ToBounds(), bitmap.PixelWidth, bitmap.PixelHeight);
+            var bounds = RoiFrameMapper.MapAccepted(reference, bitmap.PixelWidth, bitmap.PixelHeight);
 
             using var crop = await _ocr.CropAndScaleAsync(bitmap, bounds, 1.0);
             path = await FrameSaver.SavePngAsync(crop, _config.OutputDir, prefix);

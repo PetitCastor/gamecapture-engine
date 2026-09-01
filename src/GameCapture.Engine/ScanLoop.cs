@@ -177,10 +177,7 @@ internal sealed class ScanLoop : IDisposable
             var width = bitmap.PixelWidth;
             var height = bitmap.PixelHeight;
 
-            EnsureRoiInFrame(reference, width, height);
-
-            var frameRect = RoiScaler.ToFrame(reference, width, height);
-            var bounds = OcrPipeline.ClampToBitmap(frameRect.ToBounds(), width, height);
+            var bounds = RoiFrameMapper.MapAccepted(reference, width, height);
             var scale = WireLimits.NormalizeOcrScale(spec.Scale);
 
             var result = new RoiResult
@@ -239,37 +236,6 @@ internal sealed class ScanLoop : IDisposable
 
     internal ValueTask<RetainedFrameLease?> AcquireRetainedFrameLeaseAsync(CancellationToken cancellationToken)
         => _retainedFrameStore.AcquireLeaseAsync(cancellationToken);
-
-    /// <summary>
-    /// Rejects a reference-space ROI that cannot touch the frame at all, instead of letting
-    /// <see cref="RoiScaler.ToFrame"/> silently clamp it to a meaningless 1-pixel sliver at the
-    /// edge — a read that succeeds and means nothing. Shared by every caller that turns a client
-    /// ROI into a frame crop (<see cref="ReadOneAsync"/> and DumpFrame's crop path alike), so a
-    /// mistyped constant is told, not fed, no matter which RPC it arrived on.
-    /// </summary>
-    internal static void EnsureRoiInFrame(RoiRect reference, int frameWidth, int frameHeight)
-    {
-        if (!LiesOutsideFrame(reference, frameWidth, frameHeight))
-            return;
-
-        throw new ArgumentOutOfRangeException(nameof(reference),
-            $"ROI {reference.Width}x{reference.Height} at {reference.X},{reference.Y} (reference space) " +
-            $"lies outside the {frameWidth}x{frameHeight} frame.");
-    }
-
-    /// <summary>
-    /// Reference-space rect that cannot touch the frame at all. Both coordinates are unsigned, so
-    /// "off the top/left" is impossible and only the far edges need checking.
-    /// </summary>
-    private static bool LiesOutsideFrame(RoiRect rect, int frameWidth, int frameHeight)
-    {
-        // Doubles rather than RoiScaler.ToFrameX/Y: a client rect is uint32 and casting a wild
-        // value to int would wrap into a coordinate that looks in-bounds.
-        var x = rect.X * (double)frameWidth / RoiScaler.ReferenceWidth;
-        var y = rect.Y * (double)frameHeight / RoiScaler.ReferenceHeight;
-
-        return rect.Width == 0 || rect.Height == 0 || x >= frameWidth || y >= frameHeight;
-    }
 
     /// <summary>Logs the capture size on the first frame and again if it changes (window resize).</summary>
     private void LogFrameSizeChanges(SoftwareBitmap bitmap)

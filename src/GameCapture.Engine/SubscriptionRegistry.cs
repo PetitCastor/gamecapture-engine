@@ -21,13 +21,20 @@ internal sealed class SubscriptionRegistry
     // connection times out.
     private volatile bool _completed;
 
+    /// <summary>Raised after connected-client or ROI-subscription state changes.</summary>
+    public event Action? Changed;
+
     public SubscriptionRegistry(EngineStatus status) => _status = status;
 
     public ClientSubscription Register(bool replayMode)
     {
-        var client = new ClientSubscription(replayMode, c => _status.AddClient(c.Id, c.Name));
+        var client = new ClientSubscription(
+            replayMode,
+            c => _status.AddClient(c.Id, c.Name),
+            () => Changed?.Invoke());
         _clients[client] = 0;
         _status.AddClient(client.Id, client.Name);
+        Changed?.Invoke();
 
         if (_completed)
             client.Out.Writer.TryComplete();
@@ -40,6 +47,7 @@ internal sealed class SubscriptionRegistry
         _clients.TryRemove(c, out _);
         _status.RemoveClient(c.Id);
         c.Out.Writer.TryComplete();
+        Changed?.Invoke();
     }
 
     /// <summary>Point-in-time copy; the scan loop iterates it without holding anything.</summary>

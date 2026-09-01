@@ -12,9 +12,12 @@ namespace GameCapture.Engine.Plugins;
 /// alias. Never trusted on the strength of being in the catalog —
 /// <see cref="PluginCatalog.IsTrustedAssetUrl"/> gates every use of it.</param>
 /// <param name="Channel">Stable unless the catalog explicitly marks this as a preview.</param>
+/// <param name="ClientName">Optional gRPC <c>Hello</c> identity used to associate runtime ROI
+/// subscriptions with this catalog plugin. Missing legacy metadata disables the diagnostic overlay.</param>
 public sealed record CatalogEntry(
     string Id,
     string Name,
     string Description,
     string DownloadUrl,
-    ReleaseChannel Channel = ReleaseChannel.Stable);
+    ReleaseChannel Channel = ReleaseChannel.Stable,
+    string ClientName = "");

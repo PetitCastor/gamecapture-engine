@@ -11,6 +11,7 @@
     <!-- Tray icon (GameCapture.Engine.Tray) hosts a WinForms NotifyIcon in-process. Normal launches
          are tray-only; Program allocates a console when a debugger is attached. -->
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Explorer/taskbar icon for GameCapture.Engine.exe itself, distinct from the runtime tray icon
          drawn by TrayIconFactory. Regenerate via scripts/generate_app_icon.py. -->
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>

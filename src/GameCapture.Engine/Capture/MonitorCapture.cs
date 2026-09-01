@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Drawing;
 using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -6,7 +7,11 @@ using Windows.Graphics.DirectX.Direct3D11;
 
 namespace GameCapture.Engine;
 
-public sealed record MonitorInfo(IntPtr Handle, string DeviceName, int Width, int Height, bool IsPrimary);
+public sealed record MonitorInfo(IntPtr Handle, string DeviceName, int Width, int Height, bool IsPrimary)
+{
+    /// <summary>Physical virtual-desktop bounds of this monitor.</summary>
+    public Rectangle Bounds { get; init; }
+}
 
 /// <summary>
 /// Keeps a Windows.Graphics.Capture session running against one monitor and always holds
@@ -158,12 +163,32 @@ public sealed class MonitorCapture : IDisposable
                         info.DeviceName,
                         info.Monitor.Right - info.Monitor.Left,
                         info.Monitor.Bottom - info.Monitor.Top,
-                        (info.Flags & MONITORINFOF_PRIMARY) != 0));
+                        (info.Flags & MONITORINFOF_PRIMARY) != 0)
+                    {
+                        Bounds = Rectangle.FromLTRB(
+                            info.Monitor.Left, info.Monitor.Top,
+                            info.Monitor.Right, info.Monitor.Bottom),
+                    });
                 }
                 return true;
             },
             IntPtr.Zero);
 
         return monitors.OrderByDescending(m => m.IsPrimary).ToList();
+    }
+
+    /// <summary>Reads the monitor's current physical virtual-desktop bounds.</summary>
+    public static bool TryGetBounds(IntPtr monitor, out Rectangle bounds)
+    {
+        var info = new MONITORINFOEXW { Size = (uint)Marshal.SizeOf<MONITORINFOEXW>() };
+        if (GetMonitorInfoW(monitor, ref info))
+        {
+            bounds = Rectangle.FromLTRB(
+                info.Monitor.Left, info.Monitor.Top, info.Monitor.Right, info.Monitor.Bottom);
+            return true;
+        }
+
+        bounds = Rectangle.Empty;
+        return false;
     }
 }
