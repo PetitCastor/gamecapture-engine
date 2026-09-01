@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -9,75 +8,84 @@ internal sealed class RoiOverlayRenderer : IRoiOverlayRenderer
 {
     private static readonly nint PerMonitorV2 = new(-4);
     private readonly ConsoleSink _sink;
-    private readonly ManualResetEventSlim _ready = new();
+    private readonly Lock _gate = new();
     private Thread? _thread;
     private RoiOverlayForm? _form;
-    private Exception? _failure;
-    private int _disposed;
+    private System.Drawing.Rectangle _requestedBounds;
+    private IReadOnlyList<RoiOverlayShape> _requestedShapes = [];
+    private bool _visible;
+    private bool _disposed;
 
     public RoiOverlayRenderer(ConsoleSink sink) => _sink = sink;
 
     public void Show(System.Drawing.Rectangle monitorBounds, IReadOnlyList<RoiOverlayShape> shapes)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        EnsureStarted();
-        var form = _form!;
-        try
+        RoiOverlayForm? form;
+        lock (_gate)
         {
-            form.BeginInvoke((Action)(() => form.Apply(monitorBounds, shapes)));
+            if (_disposed)
+                return;
+
+            _requestedBounds = monitorBounds;
+            _requestedShapes = shapes;
+            _visible = true;
+            EnsureStartedUnderLock();
+            form = _form;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
-        {
-            _sink.WriteLine("ROI overlay window is no longer available.");
-        }
+
+        Post(form, ApplyRequestedState);
     }
 
     public void Hide()
     {
-        var form = _form;
-        if (form is null || form.IsDisposed)
-            return;
-        try
+        RoiOverlayForm? form;
+        lock (_gate)
         {
-            form.BeginInvoke((Action)form.Hide);
+            if (_disposed)
+                return;
+
+            _visible = false;
+            form = _form;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
-        {
-        }
+
+        Post(form, ApplyRequestedState);
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-
-        var form = _form;
-        if (form is { IsDisposed: false })
+        RoiOverlayForm? form;
+        Thread? thread;
+        lock (_gate)
         {
-            try { form.BeginInvoke((Action)form.Close); }
-            catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException) { }
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _visible = false;
+            form = _form;
+            thread = _thread;
         }
-        _thread?.Join(TimeSpan.FromSeconds(2));
-        _ready.Dispose();
+
+        Post(form, () =>
+        {
+            form!.Close();
+            Application.ExitThread();
+        });
+        thread?.Join(TimeSpan.FromSeconds(2));
     }
 
-    private void EnsureStarted()
+    private void EnsureStartedUnderLock()
     {
-        if (_thread is null)
-        {
-            _thread = new Thread(Run)
-            {
-                IsBackground = true,
-                Name = "GameCapture ROI overlay",
-            };
-            _thread.SetApartmentState(ApartmentState.STA);
-            _thread.Start();
-        }
+        if (_thread is not null)
+            return;
 
-        if (!_ready.Wait(TimeSpan.FromSeconds(10)))
-            throw new TimeoutException("ROI overlay window did not start within 10 seconds.");
-        if (_failure is not null)
-            throw new InvalidOperationException("ROI overlay window could not be created.", _failure);
+        _thread = new Thread(Run)
+        {
+            IsBackground = true,
+            Name = "GameCapture ROI overlay",
+        };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
     }
 
     private void Run()
@@ -88,14 +96,64 @@ internal sealed class RoiOverlayRenderer : IRoiOverlayRenderer
             if (!AreDpiAwarenessContextsEqual(context, PerMonitorV2))
                 _sink.WriteLine("ROI overlay is not Per-Monitor-V2 DPI-aware; check the engine app manifest.");
 
-            _form = new RoiOverlayForm();
-            _ready.Set();
-            Application.Run(_form);
+            var form = new RoiOverlayForm();
+            form.CreateControl();
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    form.Dispose();
+                    return;
+                }
+
+                _form = form;
+            }
+
+            ApplyRequestedState();
+            Application.Run();
         }
         catch (Exception ex)
         {
-            _failure = ex;
-            _ready.Set();
+            _sink.WriteLine($"ROI overlay window could not be created: {ex.Message}");
+        }
+    }
+
+    private void ApplyRequestedState()
+    {
+        RoiOverlayForm? form;
+        System.Drawing.Rectangle bounds;
+        IReadOnlyList<RoiOverlayShape> shapes;
+        bool visible;
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+
+            form = _form;
+            bounds = _requestedBounds;
+            shapes = _requestedShapes;
+            visible = _visible;
+        }
+
+        if (form is null || form.IsDisposed)
+            return;
+        if (visible)
+            form.Apply(bounds, shapes);
+        else
+            form.Hide();
+    }
+
+    private static void Post(RoiOverlayForm? form, Action action)
+    {
+        if (form is null || form.IsDisposed)
+            return;
+
+        try
+        {
+            form.BeginInvoke(action);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
         }
     }
 

@@ -237,16 +237,6 @@ internal sealed class ScanLoop : IDisposable
     internal ValueTask<RetainedFrameLease?> AcquireRetainedFrameLeaseAsync(CancellationToken cancellationToken)
         => _retainedFrameStore.AcquireLeaseAsync(cancellationToken);
 
-    /// <summary>
-    /// Rejects a reference-space ROI that cannot touch the frame at all, instead of letting
-    /// <see cref="RoiScaler.ToFrame"/> silently clamp it to a meaningless 1-pixel sliver at the
-    /// edge — a read that succeeds and means nothing. Shared by every caller that turns a client
-    /// ROI into a frame crop (<see cref="ReadOneAsync"/> and DumpFrame's crop path alike), so a
-    /// mistyped constant is told, not fed, no matter which RPC it arrived on.
-    /// </summary>
-    internal static void EnsureRoiInFrame(RoiRect reference, int frameWidth, int frameHeight)
-        => RoiFrameMapper.EnsureInFrame(reference, frameWidth, frameHeight);
-
     /// <summary>Logs the capture size on the first frame and again if it changes (window resize).</summary>
     private void LogFrameSizeChanges(SoftwareBitmap bitmap)
     {

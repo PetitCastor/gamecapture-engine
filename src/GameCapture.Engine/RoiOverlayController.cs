@@ -8,7 +8,9 @@ namespace GameCapture.Engine;
 /// <summary>Owns ROI-overlay eligibility and lifecycle; native drawing stays behind <see cref="IRoiOverlayRenderer"/>.</summary>
 internal sealed class RoiOverlayController : IDisposable
 {
-    private readonly PluginLauncher _launcher;
+    private readonly Func<string, bool> _isPluginRunning;
+    private readonly Action<Action> _subscribeLauncherChanged;
+    private readonly Action<Action> _unsubscribeLauncherChanged;
     private readonly SubscriptionRegistry _subscriptions;
     private readonly EngineStatus _status;
     private readonly FrameSourceSelection _selection;
@@ -16,6 +18,7 @@ internal sealed class RoiOverlayController : IDisposable
     private readonly Lock _gate = new();
     private readonly Dictionary<string, CatalogEntry> _visible = new(StringComparer.Ordinal);
     private bool _hadFrame;
+    private long _generation;
     private bool _disposed;
 
     internal RoiOverlayController(
@@ -24,13 +27,34 @@ internal sealed class RoiOverlayController : IDisposable
         EngineStatus status,
         FrameSourceSelection selection,
         IRoiOverlayRenderer renderer)
+        : this(
+            launcher.IsRunning,
+            handler => launcher.Changed += handler,
+            handler => launcher.Changed -= handler,
+            subscriptions,
+            status,
+            selection,
+            renderer)
     {
-        _launcher = launcher;
+    }
+
+    internal RoiOverlayController(
+        Func<string, bool> isPluginRunning,
+        Action<Action> subscribeLauncherChanged,
+        Action<Action> unsubscribeLauncherChanged,
+        SubscriptionRegistry subscriptions,
+        EngineStatus status,
+        FrameSourceSelection selection,
+        IRoiOverlayRenderer renderer)
+    {
+        _isPluginRunning = isPluginRunning;
+        _subscribeLauncherChanged = subscribeLauncherChanged;
+        _unsubscribeLauncherChanged = unsubscribeLauncherChanged;
         _subscriptions = subscriptions;
         _status = status;
         _selection = selection;
         _renderer = renderer;
-        _launcher.Changed += OnSubscriptionsChanged;
+        _subscribeLauncherChanged(OnSubscriptionsChanged);
         _subscriptions.Changed += OnSubscriptionsChanged;
         _status.FrameChanged += OnFrameChanged;
     }
@@ -58,6 +82,7 @@ internal sealed class RoiOverlayController : IDisposable
                 _visible[entry.Id] = entry;
             else
                 _visible.Remove(entry.Id);
+            _generation++;
         }
 
         Refresh();
@@ -73,9 +98,10 @@ internal sealed class RoiOverlayController : IDisposable
                 return;
             _disposed = true;
             _visible.Clear();
+            _generation++;
         }
 
-        _launcher.Changed -= OnSubscriptionsChanged;
+        _unsubscribeLauncherChanged(OnSubscriptionsChanged);
         _subscriptions.Changed -= OnSubscriptionsChanged;
         _status.FrameChanged -= OnFrameChanged;
         _renderer.Dispose();
@@ -83,6 +109,8 @@ internal sealed class RoiOverlayController : IDisposable
 
     private void OnSubscriptionsChanged()
     {
+        lock (_gate)
+            _generation++;
         Refresh();
         Changed?.Invoke();
     }
@@ -91,8 +119,13 @@ internal sealed class RoiOverlayController : IDisposable
     {
         var frame = _status.Snapshot();
         var hasFrame = frame.FrameWidth > 0 && frame.FrameHeight > 0;
-        var announce = hasFrame != _hadFrame;
-        _hadFrame = hasFrame;
+        bool announce;
+        lock (_gate)
+        {
+            announce = hasFrame != _hadFrame;
+            _hadFrame = hasFrame;
+            _generation++;
+        }
         Refresh();
         if (announce)
             Changed?.Invoke();
@@ -101,22 +134,25 @@ internal sealed class RoiOverlayController : IDisposable
     private void Refresh()
     {
         KeyValuePair<string, CatalogEntry>[] requested;
+        long generation;
         lock (_gate)
         {
             if (_disposed)
                 return;
             requested = _visible.ToArray();
+            generation = _generation;
         }
 
         var shapes = new List<RoiOverlayShape>();
+        var failedIds = new List<string>();
         Rectangle monitorBounds = Rectangle.Empty;
         var removed = false;
         foreach (var (id, entry) in requested)
         {
             if (!TryBuild(entry, out var bounds, out var built, out _))
             {
-                lock (_gate)
-                    removed |= _visible.Remove(id);
+                removed = true;
+                failedIds.Add(id);
                 continue;
             }
 
@@ -124,10 +160,23 @@ internal sealed class RoiOverlayController : IDisposable
             shapes.AddRange(built);
         }
 
-        if (shapes.Count == 0)
-            _renderer.Hide();
-        else
-            _renderer.Show(monitorBounds, shapes);
+        lock (_gate)
+        {
+            if (_disposed || generation != _generation)
+                return;
+
+            if (removed)
+            {
+                foreach (var id in failedIds)
+                    _visible.Remove(id);
+                _generation++;
+            }
+
+            if (shapes.Count == 0)
+                _renderer.Hide();
+            else
+                _renderer.Show(monitorBounds, shapes);
+        }
 
         if (removed)
             Changed?.Invoke();
@@ -150,7 +199,7 @@ internal sealed class RoiOverlayController : IDisposable
             monitorBounds = monitor.Bounds;
         if (monitorBounds.Width <= 0 || monitorBounds.Height <= 0)
             return Fail("The selected capture monitor is unavailable.", out error);
-        if (!_launcher.IsRunning(entry.Id))
+        if (!_isPluginRunning(entry.Id))
             return Fail($"{entry.Name} is not running.", out error);
         if (string.IsNullOrWhiteSpace(entry.ClientName))
             return Fail($"{entry.Name} does not publish a capture client identity.", out error);
