@@ -137,6 +137,40 @@ internal static class ControlApi
         app.MapPost("/api/plugins/{id}/uninstall", (string id, HttpContext context) => HandlePluginActionAsync(id, "uninstall", context));
         app.MapPost("/api/plugins/{id}/start", (string id, HttpContext context) => HandlePluginActionAsync(id, "start", context));
         app.MapPost("/api/plugins/{id}/stop", (string id, HttpContext context) => HandlePluginActionAsync(id, "stop", context));
+        app.MapPost("/api/plugins/{id}/roi-overlay", async (string id, HttpContext context) =>
+        {
+            if (state.Controls?.Plugins is not { } plugins)
+                return ServiceUnavailable("plugin management is unavailable");
+            if (plugins.RoiOverlays is not { } overlays)
+                return ServiceUnavailable("ROI overlays are unavailable");
+
+            RoiOverlayPatch? patch;
+            try
+            {
+                patch = await context.Request.ReadFromJsonAsync<RoiOverlayPatch>(JsonOptions, context.RequestAborted);
+            }
+            catch (JsonException)
+            {
+                return BadRequest("invalid ROI overlay body");
+            }
+
+            if (patch?.Visible is null)
+                return BadRequest("invalid ROI overlay body");
+
+            var entry = FindEntry(id, plugins);
+            if (entry is null)
+                return BadRequest("unknown plugin id");
+
+            try
+            {
+                var result = overlays.SetVisible(entry, patch.Visible.Value);
+                return Results.Json(new { visible = result.IsVisible }, JsonOptions);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        });
 
         // Not a per-plugin action, so it stands alongside them rather than under /api/plugins/{id}/*:
         // toggles PluginManagerSettings.IncludePreviews (the one plugin-manager preference the deleted
@@ -316,7 +350,7 @@ internal static class ControlApi
             // showed the same "catalog-orphaned" entries; RefreshPluginRowsAsync below still merges
             // them in), so an installed-but-uncatalogued id is still known.
             return plugins.Installer.State.TryGet(id, out var installed)
-                ? new CatalogEntry(installed.Id, installed.Name, "", installed.DownloadUrl, installed.Channel)
+                ? new CatalogEntry(installed.Id, installed.Name, "", installed.DownloadUrl, installed.Channel, installed.ClientName)
                 : null;
         }
 

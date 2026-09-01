@@ -29,6 +29,9 @@ public sealed class EngineStatus
     private uint _frameHeight;
     private ulong _frameSeq;
 
+    /// <summary>Raised after a complete frame snapshot has been published.</summary>
+    public event Action? FrameChanged;
+
     public EngineStatus(string ocrLanguage, bool replayMode)
     {
         OcrLanguage = ocrLanguage;
@@ -50,6 +53,8 @@ public sealed class EngineStatus
             _frameHeight = height;
             _frameSeq = seq;
         }
+
+        FrameChanged?.Invoke();
     }
 
     /// <summary>Registers a connected plugin under its connection id, reporting the name it sent in its Hello.</summary>

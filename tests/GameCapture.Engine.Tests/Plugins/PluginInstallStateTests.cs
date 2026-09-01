@@ -39,6 +39,18 @@ public class PluginInstallStateTests : IDisposable
     }
 
     [Fact]
+    public void SavedClientName_ComesBackOnLoad()
+    {
+        var state = PluginInstallState.Load(StatePath);
+        state.Set(new InstalledPlugin("mission-plugin", "MissionPlugin", "v1.0.4", "MissionPlugin.exe",
+            DateTimeOffset.UnixEpoch, ClientName: "missions"));
+        state.Save();
+
+        Assert.True(PluginInstallState.Load(StatePath).TryGet("mission-plugin", out var installed));
+        Assert.Equal("missions", installed.ClientName);
+    }
+
+    [Fact]
     public void ReinstallingReplacesTheEntryRatherThanAddingOne()
     {
         var state = PluginInstallState.Load(StatePath);
@@ -113,5 +125,6 @@ public class PluginInstallStateTests : IDisposable
         Assert.True(PluginInstallState.Load(StatePath).TryGet("mission-plugin", out var installed));
         Assert.Equal(ReleaseChannel.Stable, installed.Channel);
         Assert.Equal("", installed.DownloadUrl);
+        Assert.Equal("", installed.ClientName);
     }
 }

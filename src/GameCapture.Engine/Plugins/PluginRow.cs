@@ -16,7 +16,9 @@ public sealed record PluginRow(
     string InstalledVersion,
     string LatestVersion,
     bool IsRunning,
-    bool UpdatesPaused)
+    bool UpdatesPaused,
+    bool CanShowRois = false,
+    bool IsRoiOverlayVisible = false)
 {
     /// <summary>Catalog id, the key everything else is addressed by.</summary>
     public string Id => Entry.Id;

@@ -136,6 +136,8 @@ internal sealed class ControlApiEventHub : IDisposable
         {
             _plugins.Installer.Changed -= OnPluginsChanged;
             _plugins.Launcher.Changed -= OnPluginsChanged;
+            if (_plugins.RoiOverlays is not null)
+                _plugins.RoiOverlays.Changed -= OnPluginsChanged;
         }
 
         _plugins = plugins;
@@ -144,6 +146,8 @@ internal sealed class ControlApiEventHub : IDisposable
         {
             _plugins.Installer.Changed += OnPluginsChanged;
             _plugins.Launcher.Changed += OnPluginsChanged;
+            if (_plugins.RoiOverlays is not null)
+                _plugins.RoiOverlays.Changed += OnPluginsChanged;
             OnPluginsChanged();
         }
     }

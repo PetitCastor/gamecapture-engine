@@ -148,6 +148,14 @@ function pluginActionButtons(row) {
   }
 
   if (row.canStop) buttons.push({ action: "stop", label: "Stop", primary: false, enabled: true });
+  if (row.canShowRois) {
+    buttons.push({
+      action: "roiOverlay",
+      label: row.isRoiOverlayVisible ? "Hide active ROIs" : "Show active ROIs",
+      primary: false,
+      enabled: true,
+    });
+  }
   if (row.canRemove) buttons.push({ action: "uninstall", label: "Remove", primary: false, enabled: true });
 
   return buttons;
@@ -159,6 +167,7 @@ const BUSY_LABEL = {
   uninstall: "Removing…",
   start: "Starting…",
   stop: "Stopping…",
+  roiOverlay: "Updating ROI overlay…",
 };
 
 function renderPluginList(rows) {
@@ -236,6 +245,9 @@ async function runPluginAction(id, action) {
       uninstall: api.uninstallPlugin,
       start: api.startPlugin,
       stop: api.stopPlugin,
+      roiOverlay: (pluginId) => api.setRoiOverlay(
+        pluginId,
+        !pluginRows.find((row) => row.id === pluginId)?.isRoiOverlayVisible),
     };
     await actionsById[action](id);
     // The socket normally pushes this change, but it may still be connecting or reconnecting when an

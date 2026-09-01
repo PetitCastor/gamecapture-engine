@@ -148,7 +148,8 @@ public sealed class PluginInstaller : IDisposable
                 Path.Combine(destination, Path.GetRelativePath(payload, executable)),
                 DateTimeOffset.UtcNow,
                 entry.DownloadUrl,
-                entry.Channel);
+                entry.Channel,
+                entry.ClientName);
 
             State.Set(installed);
             State.Save();

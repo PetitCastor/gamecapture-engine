@@ -11,4 +11,8 @@ namespace GameCapture.Engine.Plugins;
 public sealed record PluginServices(
     PluginInstaller Installer,
     PluginLauncher Launcher,
-    PluginManagerSettings Settings);
+    PluginManagerSettings Settings)
+{
+    /// <summary>Internal runtime-only diagnostic overlay control.</summary>
+    internal RoiOverlayController? RoiOverlays { get; init; }
+}

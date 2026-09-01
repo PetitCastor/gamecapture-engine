@@ -186,4 +186,18 @@ public class PluginRowBuilderTests
         Assert.Equal(PluginRowState.UpdateAvailable, row.State);
         Assert.False(row.UpdatesPaused);
     }
+
+    [Fact]
+    public void RoiOverlayState_IsCarriedToThePluginRow()
+    {
+        var row = Assert.Single(PluginRowBuilder.Build(
+            [Entry()],
+            new Dictionary<string, InstalledPlugin> { ["mission-plugin"] = Installed() },
+            ["mission-plugin"],
+            new Dictionary<string, string>(),
+            readRoiOverlayState: _ => new RoiOverlayState(CanShow: true, IsVisible: true)));
+
+        Assert.True(row.CanShowRois);
+        Assert.True(row.IsRoiOverlayVisible);
+    }
 }
