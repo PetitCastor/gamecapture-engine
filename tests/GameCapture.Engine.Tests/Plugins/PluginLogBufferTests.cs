@@ -200,6 +200,49 @@ public class PluginLogBufferTests
         Assert.Equal("line 4", rest.Lines[0].Text);
     }
 
+    /// <summary>
+    /// A page that took nothing must not report the caller as caught up. Deriving NextSequence from
+    /// the page's own last line cannot express that, so an empty page used to hand back the buffer's
+    /// head and a client persisting it would skip every line it had not yet read.
+    /// </summary>
+    [Fact]
+    public void Read_WithAZeroLimit_LeavesTheCursorWhereItWas()
+    {
+        var buffer = Buffer();
+        foreach (var i in Enumerable.Range(0, 5))
+            buffer.Append(PluginLogStream.Stdout, $"line {i}");
+
+        var page = buffer.Read(after: -1, limit: 0);
+
+        Assert.Empty(page.Lines);
+        Assert.Equal(0, page.NextSequence);
+
+        // The cursor it handed back still reaches everything.
+        var rest = buffer.Read(page.NextSequence - 1, limit: 100);
+        Assert.Equal(5, rest.Lines.Count);
+    }
+
+    /// <summary>
+    /// After an eviction the cursor has to resume at the oldest line actually delivered, not at the one
+    /// the caller asked for — that line no longer exists, and pointing back at it would re-deliver the
+    /// same page forever.
+    /// </summary>
+    [Fact]
+    public void Read_WithAStaleCursor_ResumesAfterTheLinesItActuallyReturned()
+    {
+        var buffer = Buffer(maxLines: 2);
+        foreach (var i in Enumerable.Range(0, 5))
+            buffer.Append(PluginLogStream.Stdout, $"line {i}");
+
+        var page = buffer.Read(after: 0, limit: 1);
+
+        Assert.Equal(["line 3"], page.Lines.Select(line => line.Text));
+        Assert.Equal(4, page.NextSequence);
+
+        var rest = buffer.Read(page.NextSequence - 1, limit: 100);
+        Assert.Equal(["line 4"], rest.Lines.Select(line => line.Text));
+    }
+
     [Fact]
     public void Read_OnAnEmptyBuffer_ReturnsAnEmptyPageThatStillHasABuffer()
     {

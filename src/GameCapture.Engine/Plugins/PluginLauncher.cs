@@ -77,6 +77,7 @@ public sealed class PluginLauncher : IDisposable
     {
         var exited = new List<Process>();
         var started = false;
+        var opened = false;
         try
         {
             lock (_gate)
@@ -101,26 +102,40 @@ public sealed class PluginLauncher : IDisposable
                 // A buffer is opened before the process exists, and reused if this plugin has run
                 // before, so a relaunch appends to the history rather than erasing it.
                 var buffer = Logs?.Open(plugin.Id);
+                opened = buffer is not null;
                 if (buffer is not null)
                     PluginProcessCapture.Configure(startInfo);
 
                 var process = new Process { StartInfo = startInfo };
-
-                // Handlers first, then Start, then the reads. Attaching after Start would lose whatever
-                // the child wrote in its first instants — which on the path this feature exists for, a
-                // plugin that dies during startup, is the entire message. BeginOutputReadLine cannot be
-                // called before Start at all. Both merely arm an async read, so neither blocks the gate.
-                if (buffer is not null)
-                    PluginProcessCapture.Attach(process, buffer);
-
-                if (!process.Start())
-                    throw new InvalidOperationException($"{plugin.Name} could not be started.");
-
-                if (buffer is not null)
+                try
                 {
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                    buffer.Append(PluginLogStream.Engine, $"-- started {plugin.Name} (pid {process.Id}) --");
+                    // Handlers first, then Start, then the reads. Attaching after Start would lose
+                    // whatever the child wrote in its first instants — which on the path this feature
+                    // exists for, a plugin that dies during startup, is the entire message.
+                    // BeginOutputReadLine cannot be called before Start at all. Both merely arm an
+                    // async read, so neither blocks the gate.
+                    if (buffer is not null)
+                        PluginProcessCapture.Attach(process, buffer);
+
+                    if (!process.Start())
+                        throw new InvalidOperationException($"{plugin.Name} could not be started.");
+
+                    if (buffer is not null)
+                    {
+                        process.BeginOutputReadLine();
+                        process.BeginErrorReadLine();
+                        buffer.Append(PluginLogStream.Engine, $"-- started {plugin.Name} (pid {process.Id}) --");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // File.Exists says nothing about whether the file can actually be executed, so a
+                    // corrupt download or a blocked binary throws here rather than returning false.
+                    // The instance is ours until it lands in _running, and nothing else can reach it
+                    // afterwards, so this is the only place it can be let go of.
+                    buffer?.Append(PluginLogStream.Engine, $"-- failed to start: {ex.Message} --");
+                    Release(process);
+                    throw;
                 }
 
                 _running[plugin.Id] = process;
@@ -134,7 +149,12 @@ public sealed class PluginLauncher : IDisposable
             // Raised after the lock is released: this event reaches ControlApiEventHub, which
             // broadcasts to WebSocket clients — a slow or stuck client must never add latency to
             // every Start/Stop/Prune call across the process by holding this up under _gate.
-            if (exited.Count > 0 || started)
+            //
+            // A launch that opened a buffer and then failed still counts as a change: HasLogs has
+            // flipped, and the failure notice in that buffer is the only account of what went wrong.
+            // Without this the row would keep its stale shape — no Show logs button — until some
+            // unrelated plugin happened to start or stop.
+            if (exited.Count > 0 || started || opened)
                 Changed?.Invoke();
         }
     }

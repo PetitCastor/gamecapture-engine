@@ -79,9 +79,12 @@ internal sealed class PluginLogBuffer
             for (var i = 0; i < take; i++)
                 lines[i] = _ring[(_head + skip + i) % _ring.Length];
 
-            // A limit-capped page leaves the cursor on the remainder; only a page that reached the end
-            // of the buffer may advance to _nextSequence, or a fast writer would be paged straight past.
-            var next = take > 0 && take == limit ? lines[^1].Sequence + 1 : _nextSequence;
+            // The cursor lands on the next line this reader has not been handed, whatever the reason it
+            // stopped: the limit, the end of the buffer, or a limit of zero that took nothing at all.
+            // Deriving it from the offset rather than from the page's contents is what keeps the "no
+            // line is ever skipped" promise for the pages that come back empty. When the read did reach
+            // the end this is exactly _nextSequence, since oldest + _count is how that value is built.
+            var next = oldest + skip + take;
 
             return new PluginLogPage(
                 HasBuffer: true,

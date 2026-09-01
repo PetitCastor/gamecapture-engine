@@ -127,6 +127,43 @@ public class PluginLauncherLogCaptureTests
     }
 
     /// <summary>
+    /// File.Exists says nothing about whether a file can be executed, so a corrupt download throws out
+    /// of Process.Start rather than returning false. The launch still has to leave the row consistent:
+    /// the buffer that was opened before the attempt says why it failed, and Changed has to fire so the
+    /// UI learns there is now something to read — otherwise the row keeps its stale shape until some
+    /// unrelated plugin happens to start or stop.
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task WhenTheExecutableCannotBeRun_TheFailureIsRecordedAndAnnounced()
+    {
+        var logs = new PluginLogStore();
+        using var launcher = new PluginLauncher { Logs = logs };
+        var changed = 0;
+        launcher.Changed += () => Interlocked.Increment(ref changed);
+
+        var notAnExecutable = Path.Combine(Path.GetTempPath(), $"gc-not-an-exe-{Guid.NewGuid():N}.exe");
+        await File.WriteAllTextAsync(notAnExecutable, "this is not a PE file");
+        try
+        {
+            var plugin = new InstalledPlugin("broken-plugin", "Broken", "v0", notAnExecutable, DateTimeOffset.UtcNow);
+
+            Assert.ThrowsAny<Exception>(() => launcher.Start(plugin));
+
+            Assert.False(launcher.IsRunning(plugin.Id));
+            Assert.True(logs.Has(plugin.Id));
+            Assert.Contains(
+                logs.Read(plugin.Id, after: -1, limit: 100).Lines,
+                line => line.Stream == PluginLogStream.Engine && line.Text.StartsWith("-- failed to start", StringComparison.Ordinal));
+            Assert.True(changed > 0);
+        }
+        finally
+        {
+            File.Delete(notAnExecutable);
+        }
+    }
+
+    /// <summary>
     /// A launcher without a store must not redirect anything: the child keeps inheriting the engine's
     /// streams, which is what every existing test that only cares about the running set relies on.
     /// </summary>
