@@ -172,12 +172,24 @@ internal sealed class EngineDesktopLifetime : IDisposable
 
         SettingsSaveResult UpdateSettings(Func<EngineSettings, EngineSettings> update)
         {
+            EngineSettings before;
+            SettingsSaveResult result;
             lock (settingsGate)
             {
-                var result = SaveSettings(currentSettings, update(currentSettings));
+                before = currentSettings;
+                result = SaveSettings(currentSettings, update(currentSettings));
                 currentSettings = result.Settings;
-                return result;
             }
+
+            // Theme is the one setting the web UI applies live (TASK-UI-05 section 6): the page reads
+            // its own new value straight off this POST's response, but the native caption bar is
+            // MainWindow's to own and lives on a different thread, so it needs this explicit nudge.
+            // _tray is read here, not captured, the same lazy-resolution pattern OnExit below relies
+            // on: safe even though BuildInteractiveControls can run before Start() assigns it.
+            if (result.Succeeded && result.Settings.Theme != before.Theme)
+                _tray?.ApplyThemeSetting(result.Settings.Theme);
+
+            return result;
         }
 
         // Plugin management used to be scoped to the tray; the loopback control API and the main
@@ -210,7 +222,10 @@ internal sealed class EngineDesktopLifetime : IDisposable
             Plugins: new PluginServices(
                 _pluginInstaller,
                 _pluginLauncher,
-                PluginManagerSettings.Load(PluginPaths.SettingsFile(pluginRoot))));
+                PluginManagerSettings.Load(PluginPaths.SettingsFile(pluginRoot))),
+            // Same lazy-resolution pattern as OnExit above: _tray is read at call time, not captured,
+            // so this closure is safe to build before Start() assigns it.
+            OnBrowseFolder: initialDirectory => _tray?.BrowseForFolderAsync(initialDirectory) ?? Task.FromResult<string?>(null));
 
         // The control API drives the same callbacks and plugin services the tray/window do, so all
         // three can never disagree about what an action did.

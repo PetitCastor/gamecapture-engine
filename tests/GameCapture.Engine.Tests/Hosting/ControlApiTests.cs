@@ -51,16 +51,17 @@ public class ControlApiTests
     }
 
     [Fact]
-    public async Task Events_NoAuthorizationHeader_RejectsTheHandshake()
+    public async Task Events_NoSubProtocol_RejectsTheHandshake()
     {
         await using var harness = await ControlApiHarness.StartAsync();
 
-        // The route middleware in ControlApi.Map gates the WebSocket upgrade the same way it gates
-        // every other /api/* route, but a routing-order regression (UseWebSockets or the auth
-        // middleware moved relative to the /api/events Map call) would only show up here, not in the
+        // TASK-UI-07: the WebSocket upgrade authenticates via a "bearer.<token>"
+        // Sec-WebSocket-Protocol entry, not the Authorization header a browser cannot set on a
+        // WebSocket handshake. A routing-order regression (the /api/events bypass in ControlApi.Map's
+        // middleware, or TryMatchBearerSubProtocol itself) would only show up here, not in the
         // /api/status tests above — this is a distinct code path through Kestrel's upgrade handling.
         await Assert.ThrowsAsync<System.Net.WebSockets.WebSocketException>(
-            () => harness.ConnectEventsAsync(authorizationHeader: null));
+            () => harness.ConnectEventsAsync(subProtocol: null));
     }
 
     [Fact]
@@ -69,7 +70,20 @@ public class ControlApiTests
         await using var harness = await ControlApiHarness.StartAsync();
 
         await Assert.ThrowsAsync<System.Net.WebSockets.WebSocketException>(
-            () => harness.ConnectEventsAsync("Bearer not-the-real-token"));
+            () => harness.ConnectEventsAsync("bearer.not-the-real-token"));
+    }
+
+    [Fact]
+    public async Task Events_CorrectBearerSubProtocol_AcceptsAndEchoesExactlyOneSubProtocol()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+
+        // RFC 6455: a server that accepts a subprotocol must echo exactly one back, or the browser
+        // tears the connection down — this is the assertion that TryMatchBearerSubProtocol's result
+        // actually reaches AcceptWebSocketAsync's SubProtocol, not just that the handshake succeeds.
+        using var socket = await harness.ConnectEventsAsync();
+
+        Assert.StartsWith("bearer.", socket.SubProtocol);
     }
 
     [Fact]
@@ -131,6 +145,7 @@ public class ControlApiTests
         Assert.Equal(
             ["Monitor 1", "Monitor 2"],
             body.GetProperty("monitors").EnumerateArray().Select(e => e.GetString()));
+        Assert.False(body.GetProperty("includePreviews").GetBoolean());
     }
 
     [Fact]
@@ -230,6 +245,46 @@ public class ControlApiTests
     }
 
     [Fact]
+    public async Task BrowseForFolder_NoInteractiveSurfaceRegistered_Returns204()
+    {
+        // ControlApiHarness never builds a MainWindow (see its own remarks), so TrayControls.OnBrowseFolder
+        // is unset — the same "nobody can show a dialog" case a headless run hits. BrowseFolderAsync
+        // must degrade to "cancelled" (204) here rather than throw.
+        await using var harness = await ControlApiHarness.StartAsync();
+        using var client = harness.AuthorizedClient();
+
+        var response = await client.PostAsJsonAsync("/api/settings/browse", new { initialDirectory = harness.CurrentSettings.OutputDir });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BrowseForFolder_NoBody_StillReturns204()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+        using var client = harness.AuthorizedClient();
+
+        var response = await client.PostAsync("/api/settings/browse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BrowseForFolder_MalformedBody_ReturnsJson400()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+        using var client = harness.AuthorizedClient();
+        using var content = new StringContent("{not-json");
+        content.Headers.ContentType = new("application/json");
+
+        var response = await client.PostAsync("/api/settings/browse", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid browse request body", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task Exit_InvokesTheSharedExitCallback()
     {
         await using var harness = await ControlApiHarness.StartAsync();
@@ -252,6 +307,41 @@ public class ControlApiTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(string.IsNullOrEmpty(body.GetProperty("error").GetString()));
+    }
+
+    [Fact]
+    public async Task UpdatePluginSettings_TogglesIncludePreviews_PersistsAndReturnsRefreshedRows()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+        using var client = harness.AuthorizedClient();
+        Assert.False(harness.PluginSettings.IncludePreviews);
+
+        var response = await client.PostAsJsonAsync("/api/plugins/settings", new { includePreviews = true });
+
+        response.EnsureSuccessStatusCode();
+        Assert.True(harness.PluginSettings.IncludePreviews);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Array, body.ValueKind);
+
+        // GET /api/settings is the checkbox's seed value on page load (TASK-UI-05 section 4) — must
+        // reflect what was actually persisted, not just what this one POST's own response showed.
+        var settings = await client.GetFromJsonAsync<JsonElement>("/api/settings");
+        Assert.True(settings.GetProperty("includePreviews").GetBoolean());
+    }
+
+    [Fact]
+    public async Task UpdatePluginSettings_MalformedBody_ReturnsJson400()
+    {
+        await using var harness = await ControlApiHarness.StartAsync();
+        using var client = harness.AuthorizedClient();
+        using var content = new StringContent("{not-json");
+        content.Headers.ContentType = new("application/json");
+
+        var response = await client.PostAsync("/api/plugins/settings", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid settings body", body.GetProperty("error").GetString());
     }
 
     [Fact]
