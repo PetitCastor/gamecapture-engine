@@ -66,6 +66,19 @@ internal static class ControlApi
                 return;
             }
 
+            // TASK-UI-07: a browser's WebSocket constructor has no API to set a custom request header,
+            // so the /api/events upgrade cannot carry Authorization the way every other /api/* route
+            // does. It proves the token instead via a "bearer.<token>" Sec-WebSocket-Protocol entry,
+            // checked (and rejected with 401 before AcceptWebSocketAsync on a miss) inside the
+            // /api/events handler itself — so this gate steps aside only for that one path, and only
+            // for an actual WebSocket handshake; a plain GET/POST to the same path still needs the
+            // header like everything else here.
+            if (context.WebSockets.IsWebSocketRequest && context.Request.Path.StartsWithSegments("/api/events"))
+            {
+                await next(context);
+                return;
+            }
+
             if (!IsAuthorized(context.Request, token))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -111,19 +124,55 @@ internal static class ControlApi
             currentIndex = sourceSelection?.CurrentMonitorIndex ?? 0,
         }, JsonOptions));
 
-        app.MapGet("/api/plugins", async () =>
+        app.MapGet("/api/plugins", async (HttpContext context) =>
         {
             if (state.Controls?.Plugins is not { } plugins)
                 return Results.Json(Array.Empty<PluginRow>(), JsonOptions);
 
-            return Results.Json(await RefreshPluginRowsAsync(plugins), JsonOptions);
+            return Results.Json(await RefreshPluginRowsAsync(plugins, context.RequestAborted), JsonOptions);
         });
 
-        app.MapPost("/api/plugins/{id}/install", (string id) => HandlePluginActionAsync(id, "install"));
-        app.MapPost("/api/plugins/{id}/update", (string id) => HandlePluginActionAsync(id, "update"));
-        app.MapPost("/api/plugins/{id}/uninstall", (string id) => HandlePluginActionAsync(id, "uninstall"));
-        app.MapPost("/api/plugins/{id}/start", (string id) => HandlePluginActionAsync(id, "start"));
-        app.MapPost("/api/plugins/{id}/stop", (string id) => HandlePluginActionAsync(id, "stop"));
+        app.MapPost("/api/plugins/{id}/install", (string id, HttpContext context) => HandlePluginActionAsync(id, "install", context));
+        app.MapPost("/api/plugins/{id}/update", (string id, HttpContext context) => HandlePluginActionAsync(id, "update", context));
+        app.MapPost("/api/plugins/{id}/uninstall", (string id, HttpContext context) => HandlePluginActionAsync(id, "uninstall", context));
+        app.MapPost("/api/plugins/{id}/start", (string id, HttpContext context) => HandlePluginActionAsync(id, "start", context));
+        app.MapPost("/api/plugins/{id}/stop", (string id, HttpContext context) => HandlePluginActionAsync(id, "stop", context));
+
+        // Not a per-plugin action, so it stands alongside them rather than under /api/plugins/{id}/*:
+        // toggles PluginManagerSettings.IncludePreviews (the one plugin-manager preference the deleted
+        // PluginsForm used to own, TASK-UI-05 section 4/7) and hands back the same row shape /api/plugins
+        // returns, so the client can re-render from the response instead of issuing a second request.
+        app.MapPost("/api/plugins/settings", async (HttpContext context) =>
+        {
+            if (state.Controls?.Plugins is not { } plugins)
+                return ServiceUnavailable("plugin management is unavailable");
+
+            PluginPreviewsPatch? patch;
+            try
+            {
+                patch = await context.Request.ReadFromJsonAsync<PluginPreviewsPatch>(JsonOptions, context.RequestAborted);
+            }
+            catch (JsonException)
+            {
+                return BadRequest("invalid settings body");
+            }
+
+            if (patch is null)
+                return BadRequest("invalid settings body");
+
+            try
+            {
+                plugins.Settings.IncludePreviews = patch.IncludePreviews;
+                plugins.Settings.Save();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Mirrors HandlePluginActionAsync's own catch below — same failure modes, same shape.
+                return Results.Json(new { error = "the operation failed" }, JsonOptions, statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            return Results.Json(await RefreshPluginRowsAsync(plugins, context.RequestAborted), JsonOptions);
+        });
 
         app.MapGet("/api/settings", () =>
         {
@@ -135,6 +184,13 @@ internal static class ControlApi
                 settings = controls.Settings,
                 ocrLanguages = controls.AvailableOcrLanguages,
                 monitors = controls.MonitorLabels,
+                // The plugins pane's "Include preview builds" checkbox (TASK-UI-05 section 4) needs a
+                // seed value on first load; neither GET /api/plugins (a bare row array, pinned as such
+                // by existing tests) nor POST /api/plugins/settings (which only echoes refreshed rows)
+                // exposes it. This aggregator already carries other settings-adjacent read-only context
+                // (ocrLanguages, monitors), so the per-user preview preference joins it rather than
+                // growing the /api/plugins response's shape.
+                includePreviews = controls.Plugins?.Settings.IncludePreviews ?? false,
             }, JsonOptions);
         });
 
@@ -172,6 +228,33 @@ internal static class ControlApi
             return Results.Json(new { settings = result.Settings, restartPending = result.RestartPending }, JsonOptions);
         });
 
+        // The page cannot open a native folder picker itself (TASK-UI-05 section 5); this opens
+        // FolderBrowserDialog on the UI thread on its behalf and hands back the chosen path, or 204
+        // when the dialog was cancelled (or no interactive surface exists to host one at all).
+        app.MapPost("/api/settings/browse", async (HttpContext context) =>
+        {
+            if (state.Controls is not { } controls)
+                return ServiceUnavailable("settings are unavailable");
+
+            BrowseFolderRequest? body = null;
+            if (context.Request.ContentLength is > 0)
+            {
+                try
+                {
+                    body = await context.Request.ReadFromJsonAsync<BrowseFolderRequest>(JsonOptions, context.RequestAborted);
+                }
+                catch (JsonException)
+                {
+                    return BadRequest("invalid browse request body");
+                }
+            }
+
+            var chosen = await controls.BrowseFolderAsync(body?.InitialDirectory);
+            return chosen is null
+                ? Results.NoContent()
+                : Results.Json(new { path = chosen }, JsonOptions);
+        });
+
         app.MapPost("/api/exit", () =>
         {
             if (state.Controls is not { } controls)
@@ -189,7 +272,20 @@ internal static class ControlApi
                 return;
             }
 
-            using var socket = await context.WebSockets.AcceptWebSocketAsync();
+            // TASK-UI-07: this path is exempted from the Authorization-header gate above, so it is the
+            // one place responsible for authenticating itself — via the "bearer.<token>"
+            // Sec-WebSocket-Protocol entry a browser's WebSocket constructor can actually set. No match
+            // means 401 before AcceptWebSocketAsync, same outcome as every other unauthorized /api/*
+            // request; a match must echo exactly that one subprotocol back or the browser tears the
+            // connection down (RFC 6455 requires a server that accepts a subprotocol to name it).
+            if (!TryMatchBearerSubProtocol(context, token, out var subProtocol))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+
+            using var socket = await context.WebSockets.AcceptWebSocketAsync(
+                new WebSocketAcceptContext { SubProtocol = subProtocol });
             await hub.RunAsync(socket, context.RequestAborted);
         });
 
@@ -216,8 +312,9 @@ internal static class ControlApi
             if (cached is not null)
                 return cached;
 
-            // A plugin can still be managed after it drops out of the catalog (PluginsForm shows the
-            // same "catalog-orphaned" entries), so an installed-but-uncatalogued id is still known.
+            // A plugin can still be managed after it drops out of the catalog (the deleted PluginsForm
+            // showed the same "catalog-orphaned" entries; RefreshPluginRowsAsync below still merges
+            // them in), so an installed-but-uncatalogued id is still known.
             return plugins.Installer.State.TryGet(id, out var installed)
                 ? new CatalogEntry(installed.Id, installed.Name, "", installed.DownloadUrl, installed.Channel)
                 : null;
@@ -239,17 +336,20 @@ internal static class ControlApi
                 latest);
         }
 
-        async Task<IReadOnlyList<PluginRow>> RefreshPluginRowsAsync(PluginServices plugins)
+        // TASK-UI-05 section 7: cancellationToken is the request's own HttpContext.RequestAborted, not
+        // CancellationToken.None — a dropped or reloaded page cancels its own in-flight catalog fetch
+        // instead of leaking it, the equivalent of the deleted PluginsForm's _work cancellation.
+        async Task<IReadOnlyList<PluginRow>> RefreshPluginRowsAsync(PluginServices plugins, CancellationToken cancellationToken)
         {
             try
             {
-                var stable = await plugins.Installer.FetchCatalogAsync(CancellationToken.None);
+                var stable = await plugins.Installer.FetchCatalogAsync(cancellationToken);
                 var catalog = stable;
                 if (plugins.Settings.IncludePreviews)
                 {
                     try
                     {
-                        var previews = await plugins.Installer.FetchPreviewCatalogAsync(CancellationToken.None);
+                        var previews = await plugins.Installer.FetchPreviewCatalogAsync(cancellationToken);
                         catalog = PluginCatalogMerge.Combine(stable, previews, out _);
                     }
                     catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
@@ -267,7 +367,7 @@ internal static class ControlApi
                         continue;
                     try
                     {
-                        var version = await plugins.Installer.ResolveLatestVersionAsync(entry, CancellationToken.None);
+                        var version = await plugins.Installer.ResolveLatestVersionAsync(entry, cancellationToken);
                         if (version.Length > 0)
                             latest[entry.Id] = version;
                     }
@@ -285,9 +385,10 @@ internal static class ControlApi
             }
             catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
             {
-                // Network unavailable, or the catalog document was unreadable: degrade to whatever is
-                // already cached (possibly empty, on the very first call) rather than failing the
-                // request — this is a routine read, not worth a 500 over a flaky network.
+                // Network unavailable, the catalog document was unreadable, or the request (and its
+                // token) was cancelled out from under this fetch: degrade to whatever is already
+                // cached (possibly empty, on the very first call) rather than failing — this is a
+                // routine read, not worth a 500 over a flaky network or a page that moved on.
                 lock (cacheGate)
                     cachedCatalog = ControlApiPluginRows.MergeInstalled(cachedCatalog, plugins);
             }
@@ -295,7 +396,7 @@ internal static class ControlApi
             return BuildRowsFromCache(plugins);
         }
 
-        async Task<IResult> HandlePluginActionAsync(string id, string action)
+        async Task<IResult> HandlePluginActionAsync(string id, string action, HttpContext context)
         {
             if (state.Controls?.Plugins is not { } plugins)
                 return ServiceUnavailable("plugin management is unavailable");
@@ -313,12 +414,12 @@ internal static class ControlApi
                             var entry = FindEntry(id, plugins);
                             if (entry is null)
                             {
-                                await RefreshPluginRowsAsync(plugins);
+                                await RefreshPluginRowsAsync(plugins, context.RequestAborted);
                                 entry = FindEntry(id, plugins);
                             }
                             if (entry is null)
                                 return BadRequest("unknown plugin id");
-                            await plugins.Installer.InstallAsync(entry, progress: null, CancellationToken.None);
+                            await plugins.Installer.InstallAsync(entry, progress: null, context.RequestAborted);
                             break;
                         }
                     case "uninstall":
@@ -359,6 +460,14 @@ internal static class ControlApi
             {
                 return Results.Json(new { error = "the operation failed" }, JsonOptions, statusCode: StatusCodes.Status500InternalServerError);
             }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                // The page navigated away, reloaded, or dropped mid-operation and its own token
+                // cancelled the action out from under it — same "request moved on" case
+                // RefreshPluginRowsAsync already treats as benign, not a server fault. The client is
+                // already gone, so there is nothing meaningful to write back.
+                return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
+            }
             finally
             {
                 inFlight.TryRemove(id, out _);
@@ -388,5 +497,28 @@ internal static class ControlApi
             return false;
 
         return token.Matches(Encoding.UTF8.GetBytes(value[prefix.Length..]));
+    }
+
+    // TASK-UI-07: the WebSocket equivalent of IsAuthorized above. Never a query string (?token=) —
+    // that lands in Kestrel's own request logging and any HTTP proxy log, exactly what the
+    // never-in-a-URL rule exists to prevent — and never string equality, for the same timing-attack
+    // reason IsAuthorized avoids it. context.WebSockets.WebSocketRequestedProtocols reflects every
+    // value the client listed in Sec-WebSocket-Protocol; a client only ever sends one, but this scans
+    // all of them rather than assuming that.
+    private static bool TryMatchBearerSubProtocol(HttpContext context, ControlApiToken token, out string? subProtocol)
+    {
+        const string prefix = "bearer.";
+        foreach (var protocol in context.WebSockets.WebSocketRequestedProtocols)
+        {
+            if (protocol.StartsWith(prefix, StringComparison.Ordinal)
+                && token.Matches(Encoding.UTF8.GetBytes(protocol[prefix.Length..])))
+            {
+                subProtocol = protocol;
+                return true;
+            }
+        }
+
+        subProtocol = null;
+        return false;
     }
 }

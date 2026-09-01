@@ -34,7 +34,10 @@ internal sealed class MainWindow : Form
     private readonly WebView2 _webView;
     private readonly int _controlApiPort;
     private readonly string _controlApiToken;
-    private readonly EngineTheme _theme;
+    // Not readonly: ApplyThemeSetting (TASK-UI-05 section 6) mutates this in place when the persisted
+    // theme changes live, so IsEffectivelyDark and a later System.UserPreferenceChanged both see the
+    // current choice rather than the one this window was constructed with.
+    private EngineTheme _theme;
     private readonly bool _closeToTrayEnabled;
     private readonly Action _onExitRequested;
     private readonly Action _onFirstHideToTray;
@@ -76,6 +79,76 @@ internal sealed class MainWindow : Form
         HandleCreated += (_, _) => WindowChrome.ApplyTheme(Handle, IsEffectivelyDark());
         Load += async (_, _) => await InitializeWebViewAsync();
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+    }
+
+    /// <summary>
+    /// Re-applies the native caption bar after a live theme change (TASK-UI-05 section 6):
+    /// <c>POST /api/settings</c> persists a theme-only change without restarting, and the WebView2 page
+    /// picks up its own CSS from that response — but the DWM chrome around it is owned here, on a
+    /// different thread, and the page has no way to touch it itself. Safe to call from any thread
+    /// (settings changes arrive from a Kestrel request thread, never the UI thread); a no-op once the
+    /// window or its handle is gone.
+    /// </summary>
+    public void ApplyThemeSetting(EngineTheme theme)
+    {
+        if (IsDisposed)
+            return;
+
+        try
+        {
+            BeginInvoke((Action)(() =>
+            {
+                _theme = theme;
+                if (IsHandleCreated)
+                    WindowChrome.ApplyTheme(Handle, IsEffectivelyDark());
+            }));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            // The UI thread's handle is already gone (shutdown race); nothing left to theme.
+        }
+    }
+
+    /// <summary>
+    /// Opens a native <see cref="FolderBrowserDialog"/> on the UI thread on behalf of
+    /// <c>POST /api/settings/browse</c> (TASK-UI-05 section 5) — the web page cannot show one itself.
+    /// Safe to call from any thread; resolves to <c>null</c> (treated as "cancelled" by the caller) if
+    /// the dialog was dismissed, or if the window/handle is already gone.
+    /// </summary>
+    public Task<string?> BrowseForFolderAsync(string? initialDirectory)
+    {
+        if (IsDisposed)
+            return Task.FromResult<string?>(null);
+
+        var completion = new TaskCompletionSource<string?>();
+        try
+        {
+            BeginInvoke((Action)(() =>
+            {
+                try
+                {
+                    using var dialog = new FolderBrowserDialog
+                    {
+                        Description = "Where frame dumps land",
+                        ShowNewFolderButton = true,
+                    };
+                    if (!string.IsNullOrEmpty(initialDirectory) && Directory.Exists(initialDirectory))
+                        dialog.SelectedPath = initialDirectory;
+
+                    completion.TrySetResult(dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedPath : null);
+                }
+                catch (Exception ex)
+                {
+                    completion.TrySetException(ex);
+                }
+            }));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
+        {
+            completion.TrySetResult(null);
+        }
+
+        return completion.Task;
     }
 
     /// <summary>Marks a real exit as already underway (tray Exit, or <c>POST /api/exit</c>) so a

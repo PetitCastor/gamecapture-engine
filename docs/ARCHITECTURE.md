@@ -92,6 +92,31 @@ and not part of the repo history — the constraints below are restated in full 
 | `RefineryPlugin` | [`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins) | Tracks refinery work orders via `IGameCapturePlugin`; owns the order ledger. Same repo as above. |
 | `tests/` | `tests/` | One test project per component that lives here. Plugin replay corpora live with the plugins, in the plugins repo (`docs/REPLAY.md`). |
 
+## Interactive surface
+
+The engine's only interactive surface is a WebView2-hosted main window (`Shell/MainWindow.cs`) backed
+by a loopback control API (`Hosting/ControlApi.cs`), not the Windows tray. The tray (`Tray/TrayApplication.cs`)
+still shows a `NotifyIcon` when `trayEnabled`, but the three WinForms dialogs it used to open
+(`Tray/StatusForm.cs`, `Tray/SettingsForm.cs`, `Tray/PluginsForm.cs`) are gone — status, settings, and
+plugin management all moved to the window's web UI (`ui/index.html` + `app.js`/`api.js`/`theme.js`,
+plain ES modules, no bundler).
+
+- **Origin and token**: the control API is a second surface on the same Kestrel host the named-pipe
+  gRPC service uses (`Grpc/GrpcHost.cs`). Every `/api/*` route requires a bearer token minted fresh in
+  memory per process launch (`Hosting/ControlApiToken.cs`) — never written to disk, logged, or placed
+  in a URL. `MainWindow` receives it (and the bound port) by injecting `window.__GC_TOKEN` /
+  `window.__GC_PORT` into the page before navigation, and `api.js` reads them from there; nothing else
+  learns the token. The one exception is `WS /api/events`: a browser's `WebSocket` constructor cannot
+  set a custom `Authorization` header on the handshake, so that one route authenticates via a
+  `bearer.<token>` `Sec-WebSocket-Protocol` entry instead of the header every other route uses.
+- **Loopback-only**: Kestrel binds the control API to `127.0.0.1` on a dynamically chosen port — there
+  is no fixed port to document, and the middleware in `ControlApi.Map` refuses any non-GET/HEAD
+  request from a remote peer outright, on top of the token gate.
+- **Disabled for non-interactive runs**: `--replay`/`--video` (without `--video-realtime`) never
+  start the control API, the window, or the tray at all — nothing needs a UI to drive a batch corpus
+  run, and there is no operator present to click anything (`EngineDesktopLifetime.Start`'s
+  `Mode.IsInteractive()` gate).
+
 ## See also
 
 - [`docs/PROTOCOL.md`](PROTOCOL.md) — transport, handshake, version policy, coordinate spaces, tick

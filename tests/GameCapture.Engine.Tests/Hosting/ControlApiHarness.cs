@@ -57,6 +57,7 @@ internal sealed class ControlApiHarness : IAsyncDisposable
     public int ExitCount => _readExitCount();
     public PluginInstaller Installer => _installer;
     public PluginLauncher Launcher => _launcher;
+    public PluginManagerSettings PluginSettings => _controls.Plugins!.Settings;
 
     public int Port => _engine.ControlApiPort!.Value;
 
@@ -89,18 +90,20 @@ internal sealed class ControlApiHarness : IAsyncDisposable
     }
 
     public Task<ClientWebSocket> ConnectEventsAsync()
-        => ConnectEventsAsync($"Bearer {_engine.ControlApiToken!.Value}");
+        => ConnectEventsAsync($"bearer.{_engine.ControlApiToken!.Value}");
 
-    /// <summary>Attempts the <c>/api/events</c> handshake with the given raw <c>Authorization</c>
-    /// header value, or none at all when <paramref name="authorizationHeader"/> is null. Used by both
-    /// the happy path (a valid bearer token) and the rejection tests, which expect
+    /// <summary>Attempts the <c>/api/events</c> handshake with the given <c>Sec-WebSocket-Protocol</c>
+    /// value, or none at all when <paramref name="subProtocol"/> is null (TASK-UI-07: a browser's
+    /// <c>WebSocket</c> constructor has no API to set a custom request header, so the upgrade proves
+    /// the token this way instead of via <c>Authorization</c>). Used by both the happy path (a valid
+    /// <c>bearer.&lt;token&gt;</c> subprotocol) and the rejection tests, which expect
     /// <see cref="WebSocketException"/> out of <c>ConnectAsync</c> itself — the same auth gate that
     /// protects every other <c>/api/*</c> route must also cover the upgrade.</summary>
-    public async Task<ClientWebSocket> ConnectEventsAsync(string? authorizationHeader)
+    public async Task<ClientWebSocket> ConnectEventsAsync(string? subProtocol)
     {
         var socket = new ClientWebSocket();
-        if (authorizationHeader is not null)
-            socket.Options.SetRequestHeader("Authorization", authorizationHeader);
+        if (subProtocol is not null)
+            socket.Options.AddSubProtocol(subProtocol);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await socket.ConnectAsync(new Uri($"ws://127.0.0.1:{Port}/api/events"), timeout.Token);
         return socket;

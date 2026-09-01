@@ -111,6 +111,15 @@ public sealed class TrayApplication : IDisposable
     /// back into a hidden window. Safe to call from any thread; a no-op before the window exists.</summary>
     public void PrepareForExit() => _mainWindow?.PrepareForExit();
 
+    /// <summary>Forwards a live theme change to the main window (TASK-UI-05 section 6). Safe to call
+    /// from any thread; a no-op before the window exists.</summary>
+    public void ApplyThemeSetting(EngineTheme theme) => _mainWindow?.ApplyThemeSetting(theme);
+
+    /// <summary>Forwards a folder-picker request to the main window (TASK-UI-05 section 5). Safe to
+    /// call from any thread; resolves to <c>null</c> before the window exists.</summary>
+    public Task<string?> BrowseForFolderAsync(string? initialDirectory)
+        => _mainWindow?.BrowseForFolderAsync(initialDirectory) ?? Task.FromResult<string?>(null);
+
     private void RunUiLoop()
     {
         try

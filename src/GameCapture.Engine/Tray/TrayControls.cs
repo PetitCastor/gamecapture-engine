@@ -30,6 +30,10 @@ namespace GameCapture.Engine.Tray;
 /// <param name="OnExit">Invoked to shut the engine down.</param>
 /// <param name="Plugins">Catalog/install/launch services behind the plugin manager, or <c>null</c>
 /// to leave the plugin entries out of the menu entirely.</param>
+/// <param name="OnBrowseFolder">Opens a native folder picker on the UI thread and returns the chosen
+/// path, or <c>null</c> if the dialog was cancelled — the web UI (TASK-UI-05 section 5) has no way to
+/// show one itself. <c>null</c> when no interactive surface can host one (e.g. a test harness), in
+/// which case <see cref="BrowseFolderAsync"/> degrades to "cancelled" rather than throwing.</param>
 public sealed record TrayControls(
     IReadOnlyList<string> MonitorLabels,
     int CurrentMonitorIndex,
@@ -38,7 +42,8 @@ public sealed record TrayControls(
     Action<int> OnSelectMonitor,
     Func<Func<EngineSettings, EngineSettings>, SettingsSaveResult> OnUpdateSettings,
     Action OnExit,
-    PluginServices? Plugins = null)
+    PluginServices? Plugins = null,
+    Func<string?, Task<string?>>? OnBrowseFolder = null)
 {
     /// <summary>Current settings for whichever interactive surface is reading them.</summary>
     public EngineSettings Settings => ReadSettings();
@@ -50,4 +55,9 @@ public sealed record TrayControls(
     /// <summary>Applies a partial transformation atomically to the latest settings snapshot.</summary>
     public SettingsSaveResult UpdateSettings(Func<EngineSettings, EngineSettings> update)
         => OnUpdateSettings(update);
+
+    /// <summary>Opens the native folder picker, or resolves to <c>null</c> immediately when no
+    /// interactive surface registered one.</summary>
+    public Task<string?> BrowseFolderAsync(string? initialDirectory)
+        => OnBrowseFolder?.Invoke(initialDirectory) ?? Task.FromResult<string?>(null);
 }

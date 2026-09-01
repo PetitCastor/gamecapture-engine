@@ -6,6 +6,11 @@ agreements the wire carries (handshake, version policy, coordinate spaces, compa
 see [`docs/PROTOCOL.md`](PROTOCOL.md); for the process layout, see
 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
 
+Everything below is the plugin-facing gRPC surface (the named-pipe `CaptureEngineService`), not the
+human-facing one. The engine's interactive surface — the WebView2 main window, its loopback control
+API, and the token/origin rules that gate it — is a separate, HTTP-only surface with no RPCs of its
+own; see the "Interactive surface" section of [`docs/ARCHITECTURE.md`](ARCHITECTURE.md#interactive-surface).
+
 ## Track
 
 The one long-lived RPC: a bidirectional stream a plugin opens once per connection and keeps open
