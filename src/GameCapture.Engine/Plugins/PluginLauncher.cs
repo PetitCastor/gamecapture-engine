@@ -37,14 +37,14 @@ public sealed class PluginLauncher : IDisposable
         get
         {
             List<string> ids;
-            List<Process> exited;
+            List<(string Id, Process Process)> exited;
             lock (_gate)
             {
                 exited = Prune();
                 ids = _running.Keys.ToList();
             }
 
-            ReleaseAll(exited);
+            ReleaseAll(exited, Logs);
             if (exited.Count > 0)
                 Changed?.Invoke();
             return ids;
@@ -55,14 +55,14 @@ public sealed class PluginLauncher : IDisposable
     public bool IsRunning(string id)
     {
         bool result;
-        List<Process> exited;
+        List<(string Id, Process Process)> exited;
         lock (_gate)
         {
             exited = Prune();
             result = _running.ContainsKey(id);
         }
 
-        ReleaseAll(exited);
+        ReleaseAll(exited, Logs);
         if (exited.Count > 0)
             Changed?.Invoke();
         return result;
@@ -75,7 +75,7 @@ public sealed class PluginLauncher : IDisposable
     /// deleted or moved behind the engine's back.</exception>
     public void Start(InstalledPlugin plugin)
     {
-        var exited = new List<Process>();
+        var exited = new List<(string Id, Process Process)>();
         var started = false;
         var opened = false;
         try
@@ -122,9 +122,12 @@ public sealed class PluginLauncher : IDisposable
 
                     if (buffer is not null)
                     {
+                        // Appended before the reads are armed: a child fast enough to flush its first
+                        // line before this synchronous call returns would otherwise be able to put real
+                        // output ahead of the notice that it started at all.
+                        buffer.Append(PluginLogStream.Engine, $"-- started {plugin.Name} (pid {process.Id}) --");
                         process.BeginOutputReadLine();
                         process.BeginErrorReadLine();
-                        buffer.Append(PluginLogStream.Engine, $"-- started {plugin.Name} (pid {process.Id}) --");
                     }
                 }
                 catch (Exception ex)
@@ -144,7 +147,7 @@ public sealed class PluginLauncher : IDisposable
         }
         finally
         {
-            ReleaseAll(exited);
+            ReleaseAll(exited, Logs);
 
             // Raised after the lock is released: this event reaches ControlApiEventHub, which
             // broadcasts to WebSocket clients — a slow or stuck client must never add latency to
@@ -176,6 +179,12 @@ public sealed class PluginLauncher : IDisposable
         // otherwise stall every RunningIds and IsRunning call in the process — including the control
         // API's poll timer — over one unresponsive plugin. Once it is out of _running nothing else can
         // reach it, so no other path can terminate it a second time.
+        //
+        // The notice is written synchronously, before the kill, deliberately: callers (and the tests
+        // covering them) treat Stop as reporting the outcome the instant it returns, and an
+        // operator-initiated stop has none of the crash-diagnosis stakes that justify deferring the
+        // exit notice in Prune — losing the ordering race against a plugin's last flush here is a far
+        // smaller cost than making Stop's own result asynchronous.
         Terminate(stopping);
         Changed?.Invoke();
     }
@@ -226,10 +235,20 @@ public sealed class PluginLauncher : IDisposable
         }
     }
 
-    private static void ReleaseAll(List<Process> processes)
+    private static void ReleaseAll(List<(string Id, Process Process)> exited, PluginLogStore? logs)
     {
-        foreach (var process in processes)
-            Release(process);
+        foreach (var (id, process) in exited)
+        {
+            // The exit code is read now, synchronously — it is only valid up to Dispose — but the
+            // notice itself is written by the afterDrain callback below, once Release's WaitForExit has
+            // confirmed the output/error readers reached end of stream. Doing it here instead, right
+            // after HasExited flips true in Prune, would race those readers: HasExited and the pipe's
+            // completion are signaled by unrelated OS objects, so the exit notice could land in the
+            // buffer ahead of the plugin's own last lines — exactly the crash-diagnosis case this
+            // feature exists for.
+            var exitCode = ExitCodeOf(process);
+            Release(process, () => logs?.Append(id, PluginLogStream.Engine, $"-- exited with code {exitCode} --"));
+        }
     }
 
     // Disposing a process abandons any async read still in flight, and the timeout overload of
@@ -238,7 +257,11 @@ public sealed class PluginLauncher : IDisposable
     // Waiting for that on a pool thread, holding no lock, costs nothing and closes the gap; the only
     // way the wait outlives the engine is a grandchild holding the stdout handle, which no SDK plugin
     // has and which Kill(entireProcessTree) covers on the Stop path anyway.
-    private static void Release(Process process)
+    //
+    // afterDrain runs after that wait and before Dispose, i.e. only once the output/error readers are
+    // guaranteed to have delivered everything the process wrote — so a notice appended there is
+    // guaranteed to come after the plugin's own last line, not just usually after it.
+    private static void Release(Process process, Action? afterDrain = null)
         => _ = Task.Run(() =>
         {
             try
@@ -251,6 +274,7 @@ public sealed class PluginLauncher : IDisposable
             }
             finally
             {
+                afterDrain?.Invoke();
                 process.Dispose();
             }
         });
@@ -258,19 +282,16 @@ public sealed class PluginLauncher : IDisposable
     // Called under the lock. A plugin that exited on its own must stop counting as running, or its
     // row would offer Stop forever and never offer Update. Returns the processes that went, still
     // undisposed: the caller releases them after dropping the lock, and raises Changed once.
-    private List<Process> Prune()
+    private List<(string Id, Process Process)> Prune()
     {
-        var exited = new List<Process>();
+        var exited = new List<(string, Process)>();
         foreach (var (id, process) in _running.ToList())
         {
             if (!process.HasExited)
                 continue;
 
-            // The exit code is the other half of a crash report, and this is the last moment it can be
-            // read — which is also why nothing here needs an Exited event to go with the polling.
-            Logs?.Append(id, PluginLogStream.Engine, $"-- exited with code {ExitCodeOf(process)} --");
             _running.Remove(id);
-            exited.Add(process);
+            exited.Add((id, process));
         }
 
         return exited;

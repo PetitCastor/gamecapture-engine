@@ -72,7 +72,10 @@ internal sealed class PluginLogBuffer
 
             // Sequences are contiguous, so the cursor resolves to an offset without scanning: anything
             // the caller has already seen, plus anything evicted before it asked, is simply skipped.
-            var skip = (int)Math.Clamp(after + 1 - oldest, 0, _count);
+            // `after` is client-supplied (the control API's query string) and can be as large as
+            // long.MaxValue; branching instead of computing `after + 1 - oldest` directly keeps every
+            // step in range instead of leaning on overflow wrapping back into range by luck.
+            var skip = after < oldest ? 0 : after - oldest >= _count ? _count : (int)(after - oldest + 1);
             var take = Math.Min(_count - skip, limit);
 
             var lines = new PluginLogLine[take];
