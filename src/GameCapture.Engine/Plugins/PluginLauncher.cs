@@ -168,7 +168,8 @@ public sealed class PluginLauncher : IDisposable
         Process? stopping;
         lock (_gate)
         {
-            _running.Remove(id, out stopping);
+            if (_running.Remove(id, out stopping))
+                Logs?.Append(id, PluginLogStream.Engine, "-- stopped by the engine --");
         }
 
         if (stopping is null)
@@ -178,24 +179,33 @@ public sealed class PluginLauncher : IDisposable
         // otherwise stall every RunningIds and IsRunning call in the process — including the control
         // API's poll timer — over one unresponsive plugin. Once it is out of _running nothing else can
         // reach it, so no other path can terminate it a second time.
-        Terminate(stopping, () => Logs?.Append(id, PluginLogStream.Engine, "-- stopped by the engine --"));
+        //
+        // The notice is written synchronously, before the kill, deliberately: callers (and the tests
+        // covering them) treat Stop as reporting the outcome the instant it returns, and an
+        // operator-initiated stop has none of the crash-diagnosis stakes that justify deferring the
+        // exit notice in Prune — losing the ordering race against a plugin's last flush here is a far
+        // smaller cost than making Stop's own result asynchronous.
+        Terminate(stopping);
         Changed?.Invoke();
     }
 
     public void Dispose()
     {
-        List<(string Id, Process Process)> stopping;
+        List<Process> stopping;
         lock (_gate)
         {
-            stopping = _running.Select(pair => (pair.Key, pair.Value)).ToList();
+            foreach (var id in _running.Keys)
+                Logs?.Append(id, PluginLogStream.Engine, "-- stopped by the engine --");
+
+            stopping = _running.Values.ToList();
             _running.Clear();
         }
 
         // Same reasoning as Stop, and it matters more here: shutdown kills every plugin in turn, and
         // holding the gate across all of them would block anything still asking about the running set
         // for as long as the slowest one takes to die.
-        foreach (var (id, process) in stopping)
-            Terminate(process, () => Logs?.Append(id, PluginLogStream.Engine, "-- stopped by the engine --"));
+        foreach (var process in stopping)
+            Terminate(process);
 
         // The buffers are not cleared: the launcher owns processes, not the record of what they said.
         if (stopping.Count > 0)
@@ -205,7 +215,7 @@ public sealed class PluginLauncher : IDisposable
     // A plugin is a windowless console process with no shutdown channel of its own — the gRPC stream
     // carries ticks, not commands — so there is nothing gentler than a kill to ask of it. It holds no
     // engine-side state, and its own sinks flush per record, so the cost of that is one dropped tick.
-    private static void Terminate(Process process, Action? afterDrain = null)
+    private static void Terminate(Process process)
     {
         try
         {
@@ -221,7 +231,7 @@ public sealed class PluginLauncher : IDisposable
         }
         finally
         {
-            Release(process, afterDrain);
+            Release(process);
         }
     }
 
