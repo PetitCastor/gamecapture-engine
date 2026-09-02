@@ -69,7 +69,7 @@ internal sealed class MainWindow : Form
 
         Text = "GameCapture";
         ShowInTaskbar = true;
-        MinimumSize = new Size(900, 600);
+        MinimumSize = new Size(900, 640);
         StartPosition = FormStartPosition.CenterScreen;
         Icon = LoadApplicationIcon();
 
