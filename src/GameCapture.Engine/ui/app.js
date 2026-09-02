@@ -330,8 +330,30 @@ async function refreshPluginLogs() {
     view.error = err.message;
   } finally {
     pluginLogPollInFlight = false;
-    if (pluginLogView === view) renderPluginList(pluginRows);
+    if (pluginLogView === view && !updatePluginLogsSection()) renderPluginList(pluginRows);
   }
+}
+
+// Patches only the log section's DOM instead of renderPluginList's full rebuild,
+// so the <pre> element survives each 1s poll and keeps its scroll position.
+function updatePluginLogsSection() {
+  const section = pluginList.querySelector(".plugin-logs");
+  if (!section) return false;
+
+  const oldPre = section.querySelector(".plugin-log-output");
+  const wasAtBottom = oldPre ? oldPre.scrollHeight - oldPre.scrollTop - oldPre.clientHeight < 4 : true;
+  const prevScrollTop = oldPre ? oldPre.scrollTop : 0;
+
+  section.outerHTML = renderPluginLogs();
+
+  const newSection = pluginList.querySelector(".plugin-logs");
+  const newPre = newSection?.querySelector(".plugin-log-output");
+  if (newPre) newPre.scrollTop = wasAtBottom ? newPre.scrollHeight : prevScrollTop;
+  newSection?.querySelector("[data-close-plugin-logs]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closePluginLogs();
+  });
+  return true;
 }
 
 async function runPluginAction(id, action) {
