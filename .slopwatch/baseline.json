@@ -1,15 +1,15 @@
 {
   "version": 1,
   "createdAt": "2026-09-05T13:12:11.5635397+00:00",
-  "updatedAt": "2026-09-05T13:12:11.5655645+00:00",
-  "description": "Initial baseline created by 'slopwatch init' on 2026-09-05 13:12:11 UTC",
+  "updatedAt": "2026-09-05T17:49:20.6640948+00:00",
+  "description": "Initial baseline created by \u0027slopwatch init\u0027 on 2026-09-05 13:12:11 UTC",
   "entries": [
     {
       "hash": "c29106f8290b749b",
       "ruleId": "SW005",
       "filePath": "src/GameCapture.Contracts/GameCapture.Contracts.csproj",
       "lineNumber": 22,
-      "codeSnippet": "<NoWarn>$(NoWarn);CS1591</NoWarn>",
+      "codeSnippet": "\u003CNoWarn\u003E$(NoWarn);CS1591\u003C/NoWarn\u003E",
       "message": "Adding warnings to NoWarn: CS1591",
       "baselinedAt": "2026-09-05T13:12:11.5653425+00:00"
     },
@@ -45,7 +45,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Configuration/EngineConfig.cs",
       "lineNumber": 107,
-      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n                {\r\n                    // Best-effort: the new default still applies for this run from `seeded` below,\r\n                    // and the next successful load offers it again. A read-only file must not stop\r\n                    // the engine from starting with the config it already successfully read.\r\n    // ...",
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n                {\r\n                    // Best-effort: the new default still applies for this run from \u0060seeded\u0060 below,\r\n                    // and the next successful load offers it again. A read-only file must not stop\r\n                    // the engine from starting with the config it already successfully read.\r\n    // ...",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5654192+00:00"
     },
@@ -144,7 +144,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
       "lineNumber": 225,
-      "codeSnippet": "catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)\r\n            {\r\n                // The socket died between the state check and the send; RunAsync's own loop notices\r\n                // and removes it — one dead connection must never fault the broadcast to every other.\r\n            }",
+      "codeSnippet": "catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)\r\n            {\r\n                // The socket died between the state check and the send; RunAsync\u0027s own loop notices\r\n                // and removes it \u2014 one dead connection must never fault the broadcast to every other.\r\n            }",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5654452+00:00"
     },
@@ -243,7 +243,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Plugins/PluginManagerSettings.cs",
       "lineNumber": 62,
-      "codeSnippet": "catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)\r\n        {\r\n            // Preview access is opt-in, so a missing or unreadable preference must never enable it.\r\n            // Auto-start defaults the other way, and an unreadable file is not evidence that the user\r\n            // opted a plugin out — a plugin the engine starts that the user did not want is one visible\r\n    // ...",
+      "codeSnippet": "catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)\r\n        {\r\n            // Preview access is opt-in, so a missing or unreadable preference must never enable it.\r\n            // Auto-start defaults the other way, and an unreadable file is not evidence that the user\r\n            // opted a plugin out \u2014 a plugin the engine starts that the user did not want is one visible\r\n    // ...",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5654872+00:00"
     },
@@ -252,7 +252,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Shell/MainWindow.cs",
       "lineNumber": 106,
-      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n        {\r\n            // The UI thread's handle is already gone (shutdown race); nothing left to theme.\r\n        }",
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n        {\r\n            // The UI thread\u0027s handle is already gone (shutdown race); nothing left to theme.\r\n        }",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5654901+00:00"
     },
@@ -279,7 +279,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Shell/SingleInstance.cs",
       "lineNumber": 125,
-      "codeSnippet": "catch (WaitHandleCannotBeOpenedException)\r\n        {\r\n            // Lost a race with the first instance between its mutex creation and its event creation —\r\n            // vanishingly unlikely, and harmless either way: that instance is already coming up, and\r\n            // this launch is exiting regardless.\r\n    // ...",
+      "codeSnippet": "catch (WaitHandleCannotBeOpenedException)\r\n        {\r\n            // Lost a race with the first instance between its mutex creation and its event creation \u2014\r\n            // vanishingly unlikely, and harmless either way: that instance is already coming up, and\r\n            // this launch is exiting regardless.\r\n    // ...",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5655012+00:00"
     },
@@ -288,7 +288,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Shell/WindowChrome.cs",
       "lineNumber": 57,
-      "codeSnippet": "catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)\r\n        {\r\n            // dwmapi.dll (or this specific export) unavailable on this build/session — same\r\n            // \"not supported here\" outcome as a non-zero HRESULT.\r\n        }",
+      "codeSnippet": "catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)\r\n        {\r\n            // dwmapi.dll (or this specific export) unavailable on this build/session \u2014 same\r\n            // \u0022not supported here\u0022 outcome as a non-zero HRESULT.\r\n        }",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5655034+00:00"
     },
@@ -297,7 +297,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Tray/TrayApplication.cs",
       "lineNumber": 216,
-      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread's handle is already gone; nothing left to show.\r\n            }",
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread\u0027s handle is already gone; nothing left to show.\r\n            }",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5655055+00:00"
     },
@@ -306,7 +306,7 @@
       "ruleId": "SW003",
       "filePath": "src/GameCapture.Engine/Tray/TrayApplication.cs",
       "lineNumber": 335,
-      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread's message loop / handle is already gone; nothing left to unwind.\r\n            }",
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread\u0027s message loop / handle is already gone; nothing left to unwind.\r\n            }",
       "message": "Empty catch block swallows exceptions without handling",
       "baselinedAt": "2026-09-05T13:12:11.5655074+00:00"
     },
@@ -351,7 +351,7 @@
       "ruleId": "SW005",
       "filePath": "src/GameCapture.Sdk/GameCapture.Sdk.csproj",
       "lineNumber": 20,
-      "codeSnippet": "<NoWarn>$(NoWarn);CS1591</NoWarn>",
+      "codeSnippet": "\u003CNoWarn\u003E$(NoWarn);CS1591\u003C/NoWarn\u003E",
       "message": "Adding warnings to NoWarn: CS1591",
       "baselinedAt": "2026-09-05T13:12:11.5655156+00:00"
     },
@@ -405,7 +405,7 @@
       "ruleId": "SW005",
       "filePath": "src/GameCapture.Sdk.Testing/GameCapture.Sdk.Testing.csproj",
       "lineNumber": 19,
-      "codeSnippet": "<NoWarn>$(NoWarn);CS1591</NoWarn>",
+      "codeSnippet": "\u003CNoWarn\u003E$(NoWarn);CS1591\u003C/NoWarn\u003E",
       "message": "Adding warnings to NoWarn: CS1591",
       "baselinedAt": "2026-09-05T13:12:11.5655274+00:00"
     },
@@ -450,7 +450,7 @@
       "ruleId": "SW005",
       "filePath": "templates/GameCapture.Plugin.Template.csproj",
       "lineNumber": 25,
-      "codeSnippet": "<NoWarn>$(NoWarn);NU5128</NoWarn>",
+      "codeSnippet": "\u003CNoWarn\u003E$(NoWarn);NU5128\u003C/NoWarn\u003E",
       "message": "Adding warnings to NoWarn: NU5128",
       "baselinedAt": "2026-09-05T13:12:11.5655349+00:00"
     },
@@ -468,8 +468,8 @@
       "ruleId": "SW001",
       "filePath": "templates/gamecapture-plugin/tests/MyCapturePluginTests.cs",
       "lineNumber": 65,
-      "codeSnippet": "Fact(Skip = \"needs corpus + GAMECAPTURE_ENGINE_PATH\")",
-      "message": "Test method 'Corpus_emits_one_record' is disabled: needs corpus + GAMECAPTURE_ENGINE_PATH",
+      "codeSnippet": "Fact(Skip = \u0022needs corpus \u002B GAMECAPTURE_ENGINE_PATH\u0022)",
+      "message": "Test method \u0027Corpus_emits_one_record\u0027 is disabled: needs corpus \u002B GAMECAPTURE_ENGINE_PATH",
       "baselinedAt": "2026-09-05T13:12:11.5655384+00:00"
     },
     {
@@ -606,6 +606,438 @@
       "codeSnippet": "Thread.Sleep(50)",
       "message": "Test uses Thread.Sleep(50) which may indicate a timing-dependent test",
       "baselinedAt": "2026-09-05T13:12:11.5655644+00:00"
+    },
+    {
+      "hash": "c3d529fcaa595b1e",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/EngineHost.cs",
+      "lineNumber": 130,
+      "codeSnippet": "catch (OperationCanceledException) { /* grace period elapsed; stop anyway */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.1397005+00:00"
+    },
+    {
+      "hash": "c06052ab28bdde03",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/RoiOverlayRenderer.cs",
+      "lineNumber": 155,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.147962+00:00"
+    },
+    {
+      "hash": "10ae9392de02dab9",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Capture/MonitorCapture.cs",
+      "lineNumber": 49,
+      "codeSnippet": "catch { /* older OS builds: cosmetic only */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2238905+00:00"
+    },
+    {
+      "hash": "e1c1f27668ea90c2",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Configuration/EngineConfig.cs",
+      "lineNumber": 107,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n                {\r\n                    // Best-effort: the new default still applies for this run from \u0060seeded\u0060 below,\r\n                    // and the next successful load offers it again. A read-only file must not stop\r\n                    // the engine from starting with the config it already successfully read.\r\n    // ...",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2308581+00:00"
+    },
+    {
+      "hash": "51006fce65d42824",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Configuration/EngineConfig.cs",
+      "lineNumber": 157,
+      "codeSnippet": "catch (IOException)\r\n            {\r\n                // Losing the temp file matters less than the exception on its way up.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2308766+00:00"
+    },
+    {
+      "hash": "c45cdabaf503001b",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Grpc/CaptureGrpcService.cs",
+      "lineNumber": 205,
+      "codeSnippet": "catch (OperationCanceledException) when (ctx.CancellationToken.IsCancellationRequested)\r\n        {\r\n            // Same for the response side.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2457616+00:00"
+    },
+    {
+      "hash": "a8b884683a82c5c9",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApi.cs",
+      "lineNumber": 451,
+      "codeSnippet": "catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)\r\n                    {\r\n                        // Preview access is opt-in and best-effort; degrade to stable only.\r\n                    }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2509875+00:00"
+    },
+    {
+      "hash": "c494de074d04cc50",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApi.cs",
+      "lineNumber": 470,
+      "codeSnippet": "catch (HttpRequestException)\r\n                    {\r\n                        // Leave this row without update information.\r\n                    }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2509932+00:00"
+    },
+    {
+      "hash": "6fbe89e8086be62d",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApi.cs",
+      "lineNumber": 539,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n                            {\r\n                                // The plugin is already gone; a preference the next install will simply\r\n                                // default is not worth failing a completed uninstall over.\r\n                            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2509982+00:00"
+    },
+    {
+      "hash": "6fed08b3ca9cb395",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 94,
+      "codeSnippet": "catch (OperationCanceledException)\r\n        {\r\n            // Client dropped, or the engine is shutting down (Dispose cancels every connection below).\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2642401+00:00"
+    },
+    {
+      "hash": "eaddbf5c2d4f71d7",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 98,
+      "codeSnippet": "catch (WebSocketException)\r\n        {\r\n            // Connection reset from the other side; nothing to clean up beyond what finally does.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2642459+00:00"
+    },
+    {
+      "hash": "a7822d797697397f",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 102,
+      "codeSnippet": "catch (ObjectDisposedException)\r\n        {\r\n            // Engine shutdown aborted the socket while this request was between operations.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2642494+00:00"
+    },
+    {
+      "hash": "4e5df43458fe59a0",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 114,
+      "codeSnippet": "catch (WebSocketException)\r\n            {\r\n                // Already gone; nothing left to close cleanly.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2642515+00:00"
+    },
+    {
+      "hash": "b5b8b2d6ee581521",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 118,
+      "codeSnippet": "catch (ObjectDisposedException)\r\n            {\r\n                // Shutdown disposed the transport before the close handshake could begin.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2642533+00:00"
+    },
+    {
+      "hash": "cdea2d199d478eca",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 225,
+      "codeSnippet": "catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)\r\n            {\r\n                // The socket died between the state check and the send; RunAsync\u0027s own loop notices\r\n                // and removes it \u2014 one dead connection must never fault the broadcast to every other.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.2642573+00:00"
+    },
+    {
+      "hash": "9527993501e29c24",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 273,
+      "codeSnippet": "catch (ObjectDisposedException)\r\n            {\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.264259+00:00"
+    },
+    {
+      "hash": "af61402decc490c7",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/StartupDiagnostics.cs",
+      "lineNumber": 57,
+      "codeSnippet": "catch\r\n        {\r\n            // A non-interactive session may have no writable profile; reporting must never mask the\r\n            // original startup failure.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3023433+00:00"
+    },
+    {
+      "hash": "e060afeb0ed5a625",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Hosting/StartupDiagnostics.cs",
+      "lineNumber": 70,
+      "codeSnippet": "catch\r\n        {\r\n            // Window stations without an interactive desktop cannot display UI; there is no further\r\n            // user-facing channel available in a tray-only process.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3023493+00:00"
+    },
+    {
+      "hash": "c03705db87c1590b",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Operations/ConsoleSink.cs",
+      "lineNumber": 36,
+      "codeSnippet": "catch (IOException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.322849+00:00"
+    },
+    {
+      "hash": "145e2800b5e983ab",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Operations/ConsoleSink.cs",
+      "lineNumber": 113,
+      "codeSnippet": "catch (Exception e) when (e is IOException or ArgumentOutOfRangeException)\r\n        {\r\n            // Terminal resized/detached mid-operation; next redraw self-corrects.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3228601+00:00"
+    },
+    {
+      "hash": "9d08a7185fd563a1",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Operations/ConsoleSink.cs",
+      "lineNumber": 134,
+      "codeSnippet": "catch (Exception e) when (e is IOException or ArgumentOutOfRangeException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3228629+00:00"
+    },
+    {
+      "hash": "4c3dd461a759ca0f",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Plugins/PluginInstallState.cs",
+      "lineNumber": 128,
+      "codeSnippet": "catch (IOException)\r\n                {\r\n                    // Best-effort cleanup; a leftover .tmp costs disk space, not correctness.\r\n                }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3481392+00:00"
+    },
+    {
+      "hash": "086c29aeeb510be0",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Plugins/PluginInstaller.cs",
+      "lineNumber": 279,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n        {\r\n            // Staging leftovers are named with a fresh GUID per attempt, so one that cannot be\r\n            // deleted now costs disk space rather than correctness; never fail an install over it.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3496633+00:00"
+    },
+    {
+      "hash": "92b0cc7e4cb9e58c",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Plugins/PluginLauncher.cs",
+      "lineNumber": 228,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)\r\n        {\r\n            // Already gone, or exited between the check and the kill.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3606969+00:00"
+    },
+    {
+      "hash": "fa43755aa152ab24",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Plugins/PluginLauncher.cs",
+      "lineNumber": 271,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)\r\n            {\r\n                // Never started, or already reaped.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3607029+00:00"
+    },
+    {
+      "hash": "a26854800452a6f4",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Plugins/PluginManagerSettings.cs",
+      "lineNumber": 62,
+      "codeSnippet": "catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)\r\n        {\r\n            // Preview access is opt-in, so a missing or unreadable preference must never enable it.\r\n            // Auto-start defaults the other way, and an unreadable file is not evidence that the user\r\n            // opted a plugin out \u2014 a plugin the engine starts that the user did not want is one visible\r\n    // ...",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.3768547+00:00"
+    },
+    {
+      "hash": "f11a10e1268e9f24",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Shell/MainWindow.cs",
+      "lineNumber": 106,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n        {\r\n            // The UI thread\u0027s handle is already gone (shutdown race); nothing left to theme.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4070232+00:00"
+    },
+    {
+      "hash": "1bfe2975baa0af56",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Shell/MainWindow.cs",
+      "lineNumber": 291,
+      "codeSnippet": "catch (Win32Exception)\r\n        {\r\n            // No default browser association on this machine; nothing more this can do.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4070332+00:00"
+    },
+    {
+      "hash": "5d09178d77afc14e",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Shell/WindowChrome.cs",
+      "lineNumber": 57,
+      "codeSnippet": "catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)\r\n        {\r\n            // dwmapi.dll (or this specific export) unavailable on this build/session \u2014 same\r\n            // \u0022not supported here\u0022 outcome as a non-zero HRESULT.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.408582+00:00"
+    },
+    {
+      "hash": "5b054ef8605e6c64",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Shell/SingleInstance.cs",
+      "lineNumber": 108,
+      "codeSnippet": "catch (FileNotFoundException)\r\n        {\r\n            // The first instance can still be between claiming the mutex and publishing its PID.\r\n            // Signalling remains useful: its window will handle the event as soon as it is ready.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4101543+00:00"
+    },
+    {
+      "hash": "b2d6bfbc2479bbc9",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Shell/SingleInstance.cs",
+      "lineNumber": 125,
+      "codeSnippet": "catch (WaitHandleCannotBeOpenedException)\r\n        {\r\n            // Lost a race with the first instance between its mutex creation and its event creation \u2014\r\n            // vanishingly unlikely, and harmless either way: that instance is already coming up, and\r\n            // this launch is exiting regardless.\r\n    // ...",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4101718+00:00"
+    },
+    {
+      "hash": "c8e59e4033da67d1",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Updates/EngineUpdateChecker.cs",
+      "lineNumber": 132,
+      "codeSnippet": "catch\r\n        {\r\n            // Already logged to the sink above; no further user-facing channel exists here.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4244303+00:00"
+    },
+    {
+      "hash": "ba12b10658a9081e",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Tray/TrayApplication.cs",
+      "lineNumber": 216,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread\u0027s handle is already gone; nothing left to show.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4347276+00:00"
+    },
+    {
+      "hash": "fec2132ae227f608",
+      "ruleId": "SW003",
+      "filePath": "src/Ocrx.Engine/Tray/TrayApplication.cs",
+      "lineNumber": 335,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread\u0027s message loop / handle is already gone; nothing left to unwind.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4347329+00:00"
+    },
+    {
+      "hash": "cbaa467a60942d98",
+      "ruleId": "SW003",
+      "filePath": "tests/Ocrx.Engine.Tests/FrameDumpServiceTests.cs",
+      "lineNumber": 59,
+      "codeSnippet": "catch { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.4759011+00:00"
+    },
+    {
+      "hash": "43762b89058576ff",
+      "ruleId": "SW004",
+      "filePath": "tests/Ocrx.Engine.Tests/FrameDumpServiceTests.cs",
+      "lineNumber": 25,
+      "codeSnippet": "Task.Delay(25)",
+      "message": "Test uses Task.Delay(25) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T17:49:20.4759077+00:00"
+    },
+    {
+      "hash": "c9f8df71476184b4",
+      "ruleId": "SW003",
+      "filePath": "tests/Ocrx.Engine.Tests/GrpcHostTests.cs",
+      "lineNumber": 179,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.5000743+00:00"
+    },
+    {
+      "hash": "7b90a07b13eb32b5",
+      "ruleId": "SW003",
+      "filePath": "tests/Ocrx.Engine.Tests/ProtocolHandshakeTests.cs",
+      "lineNumber": 153,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.572075+00:00"
+    },
+    {
+      "hash": "f49e9f4d7a7690d3",
+      "ruleId": "SW004",
+      "filePath": "tests/Ocrx.Engine.Tests/ProtocolHandshakeTests.cs",
+      "lineNumber": 162,
+      "codeSnippet": "Task.Delay(10, ct)",
+      "message": "Test uses Task.Delay(10) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T17:49:20.5720801+00:00"
+    },
+    {
+      "hash": "7f4d87aa34d97313",
+      "ruleId": "SW003",
+      "filePath": "tests/Ocrx.Engine.Tests/PluginHostIntegrationTests.cs",
+      "lineNumber": 429,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.5738713+00:00"
+    },
+    {
+      "hash": "42c7bf7391259096",
+      "ruleId": "SW004",
+      "filePath": "tests/Ocrx.Engine.Tests/PluginHostIntegrationTests.cs",
+      "lineNumber": 485,
+      "codeSnippet": "Task.Delay(25, ct)",
+      "message": "Test uses Task.Delay(25) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T17:49:20.5738769+00:00"
+    },
+    {
+      "hash": "e87302a6e8e8bc5d",
+      "ruleId": "SW004",
+      "filePath": "tests/Ocrx.Engine.Tests/PluginHostIntegrationTests.cs",
+      "lineNumber": 499,
+      "codeSnippet": "Task.Delay(10, ct)",
+      "message": "Test uses Task.Delay(10) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T17:49:20.5738829+00:00"
+    },
+    {
+      "hash": "b9eac69c89a83a3e",
+      "ruleId": "SW004",
+      "filePath": "tests/Ocrx.Engine.Tests/ReplayHarnessTests.cs",
+      "lineNumber": 107,
+      "codeSnippet": "Task.Delay(50, cts.Token)",
+      "message": "Test uses Task.Delay(50) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T17:49:20.5781863+00:00"
+    },
+    {
+      "hash": "0a53a3901d15fbdb",
+      "ruleId": "SW003",
+      "filePath": "tests/Ocrx.Engine.Tests/SdkTests.cs",
+      "lineNumber": 231,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.6187142+00:00"
+    },
+    {
+      "hash": "62254d885889907c",
+      "ruleId": "SW003",
+      "filePath": "tests/Ocrx.Engine.Tests/Hosting/ControlApiHarness.cs",
+      "lineNumber": 241,
+      "codeSnippet": "catch (IOException)\r\n        {\r\n            // Best-effort cleanup; a leftover temp folder costs disk space, not correctness.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.6344468+00:00"
+    },
+    {
+      "hash": "93b2067d0e8f37c6",
+      "ruleId": "SW003",
+      "filePath": "tests/Ocrx.Engine.Tests/Hosting/EngineDesktopLifetimeTrayEnabledTests.cs",
+      "lineNumber": 99,
+      "codeSnippet": "catch (IOException)\r\n            {\r\n                // Best-effort cleanup; a leftover temp folder costs disk space, not correctness.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T17:49:20.638162+00:00"
+    },
+    {
+      "hash": "1c4eee21cece70f9",
+      "ruleId": "SW004",
+      "filePath": "tests/Ocrx.Engine.Tests/Plugins/PluginLauncherLogCaptureTests.cs",
+      "lineNumber": 36,
+      "codeSnippet": "Task.Delay(50)",
+      "message": "Test uses Task.Delay(50) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T17:49:20.648284+00:00"
+    },
+    {
+      "hash": "f009716924f151a1",
+      "ruleId": "SW004",
+      "filePath": "tests/Ocrx.Engine.Tests/Shell/SingleInstanceTests.cs",
+      "lineNumber": 103,
+      "codeSnippet": "Thread.Sleep(50)",
+      "message": "Test uses Thread.Sleep(50) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T17:49:20.6640939+00:00"
     }
   ]
 }

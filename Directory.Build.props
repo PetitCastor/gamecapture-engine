@@ -9,12 +9,10 @@
     <Company>PetitCastor</Company>
     <Copyright>Copyright (c) PetitCastor</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/PetitCastor/gamecapture-engine</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/PetitCastor/ocrx-engine</PackageProjectUrl>
 
-    <!-- This repository. Every package on nuget.org is published from here, so SourceLink resolves
-         into this history — which is why the first published version is tagged here rather than in
-         the mono-repo this was extracted from. -->
-    <RepositoryUrl>https://github.com/PetitCastor/gamecapture-engine</RepositoryUrl>
+    <!-- Private engine source. Public contracts and SDK packages are published from ocrx-sdk. -->
+    <RepositoryUrl>https://github.com/PetitCastor/ocrx-engine</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
@@ -48,10 +46,7 @@
     <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
   </PropertyGroup>
 
-  <!-- Nothing ships unless it says so. Only the four consumable libraries flip this back to true
-       (GameCapture.Contracts, GameCapture.Sdk, GameCapture.Sdk.Testing, GameCapture.Sdk.Overlay);
-       the engine is a release-zip exe, and a test project has no business on a feed. Opt-in rather
-       than opt-out so a project added later cannot be published by forgetting a line. -->
+  <!-- The engine ships through the public binary release feed, never as a NuGet package. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -59,8 +54,7 @@
   <!-- One version train for the whole repository: MinVer derives it from the height above the
        latest v* tag, so nothing here or in any csproj carries a hand-maintained <Version>.
        AssemblyInformationalVersion follows, which is what the engine reports as engine_version
-       on the wire (EngineStatus.cs) — the packages and a running engine therefore cannot
-       disagree about which build they are. -->
+       on the wire (EngineStatus.cs). -->
   <PropertyGroup>
     <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>

@@ -2,7 +2,7 @@
 
 A plugin is a console process that says what regions of the screen it cares about and what to do
 when a tick carrying them arrives. It never captures, never runs OCR, and never speaks gRPC:
-`GameCapturePluginHost` owns connecting, subscribing, reconnecting, cancellation, and the end-of-run
+`OcrxPluginHost` owns connecting, subscribing, reconnecting, cancellation, and the end-of-run
 summary, and hands the plugin one `TickContext` at a time.
 
 This is the golden path, in order. Every code block below is taken from a project that was built
@@ -26,14 +26,14 @@ and tested outside this repository against the real SDK — see [§8](#8-cold-st
   flavor (`net10.0-windows10.0.22621.0`), and a plugin must never need it — see the TFM constraint
   in [`ARCHITECTURE.md`](ARCHITECTURE.md#frozen-constraints).
 - **An engine to talk to.** Either a release zip
-  ([Releases](https://github.com/PetitCastor/gamecapture-engine/releases) ships
-  `GameCapture.Engine-vX.Y.Z-win-x64.zip`, a self-contained exe) or a clone built with
-  `dotnet build GameCaptureEngine.slnx`. Running the engine live needs Windows 10/11 with an OCR
+  ([Releases](https://github.com/PetitCastor/ocrx-engine/releases) ships
+  `Ocrx.Engine-vX.Y.Z-win-x64.zip`, a self-contained exe) or a clone built with
+  `dotnet build OcrxEngine.slnx`. Running the engine live needs Windows 10/11 with an OCR
   language pack installed; replaying a corpus needs the same, but no game. Note where the exe lands
-  — parity tests need `GAMECAPTURE_ENGINE_PATH` pointed at it ([§7](#7-testing)).
-- **The packages, from nuget.org.** `GameCapture.Sdk`, `GameCapture.Contracts`, and
-  `GameCapture.Sdk.Testing` restore like any other dependency; the opt-in
-  `GameCapture.Sdk.Overlay` package is only needed for a desktop overlay. The template
+  — parity tests need `OCRX_ENGINE_PATH` pointed at it ([§7](#7-testing)).
+- **The packages, from nuget.org.** `Ocrx.Sdk`, `Ocrx.Contracts`, and
+  `Ocrx.Sdk.Testing` restore like any other dependency; the opt-in
+  `Ocrx.Sdk.Overlay` package is only needed for a desktop overlay. The template
   ([§2](#2-creating-the-project)) already references all three by package ID. No clone of this
   repository is involved in writing a plugin — clone it only to work on the engine itself, or to
   test against an unreleased SDK ([§2](#2-creating-the-project)).
@@ -44,15 +44,15 @@ no engine process. That is the point of the plain-`net10.0` boundary.
 ## 2. Creating the project
 
 ```powershell
-dotnet new install GameCapture.Plugin.Template
-dotnet new gamecapture-plugin -n MyPlugin
+dotnet new install Ocrx.Plugin.Template
+dotnet new ocrx-plugin -n MyPlugin
 ```
 
 This scaffolds the whole project: `MyPlugin.csproj`, `Program.cs`, `Rois.cs`, `MyPlugin.cs` (the
 class to rename and fill in — [§3](#3-anatomy-of-a-plugin) picks up from here), `config.json`, a
-`tests/` project wired against `GameCapture.Sdk.Testing` ([§7](#7-testing)), and a CI workflow stub.
-`dotnet new gamecapture-plugin -h` lists every symbol, including `--SdkVersion` for pinning a
-specific `GameCapture.Sdk`/`.Contracts`/`.Sdk.Testing` version.
+`tests/` project wired against `Ocrx.Sdk.Testing` ([§7](#7-testing)), and a CI workflow stub.
+`dotnet new ocrx-plugin -h` lists every symbol, including `--SdkVersion` for pinning a
+specific `Ocrx.Sdk`/`.Contracts`/`.Sdk.Testing` version.
 
 **Testing against an unreleased SDK** (an engine change not yet published) is the one case that
 needs a clone: pack the five projects into a local feed, add that feed as a source scoped to the new
@@ -60,14 +60,14 @@ project (not the machine-wide config `dotnet nuget add source` mutates without `
 pin the instantiated project at the packed prerelease with `--SdkVersion`:
 
 ```powershell
-dotnet pack src/GameCapture.Contracts -c Release -o feed
-dotnet pack src/GameCapture.Sdk -c Release -o feed
-dotnet pack src/GameCapture.Sdk.Testing -c Release -o feed
-dotnet pack src/GameCapture.Sdk.Overlay -c Release -o feed
-dotnet pack templates/GameCapture.Plugin.Template.csproj -c Release -o feed
+dotnet pack src/Ocrx.Contracts -c Release -o feed
+dotnet pack src/Ocrx.Sdk -c Release -o feed
+dotnet pack src/Ocrx.Sdk.Testing -c Release -o feed
+dotnet pack src/Ocrx.Sdk.Overlay -c Release -o feed
+dotnet pack templates/Ocrx.Plugin.Template.csproj -c Release -o feed
 
-dotnet new install feed/GameCapture.Plugin.Template.*.nupkg
-dotnet new gamecapture-plugin -n MyPlugin --SdkVersion <version from feed/GameCapture.Sdk.*.nupkg>
+dotnet new install feed/Ocrx.Plugin.Template.*.nupkg
+dotnet new ocrx-plugin -n MyPlugin --SdkVersion <version from feed/Ocrx.Sdk.*.nupkg>
 
 dotnet new nugetconfig -o MyPlugin
 dotnet nuget add source <full path to feed> --name local --configfile MyPlugin/nuget.config
@@ -77,15 +77,15 @@ dotnet nuget add source <full path to feed> --name local --configfile MyPlugin/n
 of this recipe on every PR (the anti-rot guard for the template itself: instantiate, build, test).
 It deliberately does not pack the optional overlay because the generated template does not reference
 it; pack the overlay as shown above when testing it from a local feed. Read the workflow for the
-working detail, including the `GameCapture.Sdk.Testing` name collision filtered from the
-`GameCapture.Sdk.*.nupkg` glob.
+working detail, including the `Ocrx.Sdk.Testing` name collision filtered from the
+`Ocrx.Sdk.*.nupkg` glob.
 
 Setting the same project up by hand, without the template, is
 [Appendix: manual project setup](#appendix-manual-project-setup).
 
 ## 3. Anatomy of a plugin
 
-`IGameCapturePlugin` (`src/GameCapture.Sdk/Plugin/IGameCapturePlugin.cs`) has three required members — `Name`,
+`IOcrxPlugin` (`src/Ocrx.Sdk/Plugin/IOcrxPlugin.cs`) has three required members — `Name`,
 `Rois`, `OnTickAsync` — and four with defaults. The example below reads one text region, remembers
 the last value, and emits a record whenever it changes.
 
@@ -94,8 +94,8 @@ it once per connect and sends it as the initial subscription: per-tick atomicity
 mid-tick round-trip that could add a region later.
 
 ```csharp
-using GameCapture.Contracts;
-using GameCapture.Sdk;
+using Ocrx.Contracts;
+using Ocrx.Sdk;
 
 namespace MyPlugin;
 
@@ -118,14 +118,14 @@ public static class Rois
 The plugin itself:
 
 ```csharp
-using GameCapture.Sdk;
+using Ocrx.Sdk;
 
 namespace MyPlugin;
 
 /// <summary>
 /// Watches one region for a counter and emits a record every time the value changes.
 /// </summary>
-public sealed class CounterPlugin : IGameCapturePlugin
+public sealed class CounterPlugin : IOcrxPlugin
 {
     private string? _last;
 
@@ -230,7 +230,7 @@ that contains that config file, not from the shell's working directory:
 
 ```json
 {
-  "pipeName": "GameCapture.Engine",
+  "pipeName": "Ocrx.Engine",
   "saveDebugFrames": false,
   "outputs": [
     {
@@ -247,7 +247,7 @@ that contains that config file, not from the shell's working directory:
     },
     {
       "type": "http",
-      "url": "https://example.invalid/gamecapture/records",
+      "url": "https://example.invalid/ocrx/records",
       "timeoutSeconds": 5
     },
     {
@@ -270,7 +270,7 @@ POSTs one JSON object per record. `dedupeOnChange` defaults to `true` for those 
 true, they do not create files or make HTTP requests, so corpus runs cannot touch a real ledger or
 endpoint.
 
-The `overlay` sink is supplied by the separate, opt-in `GameCapture.Sdk.Overlay` package. Reference
+The `overlay` sink is supplied by the separate, opt-in `Ocrx.Sdk.Overlay` package. Reference
 that package and register `new OverlaySinkFactory()` through `PluginHostOptions.OverlayFactory`; an
 unregistered overlay entry is a no-op, preserving portability for plugins that do not reference it.
 Its `overlay` keys include `offsetX`/`offsetY`, `width`/`height`, colours, `template`, and `lingerMs`;
@@ -429,11 +429,11 @@ first read after reconnect is a re-sighting rather than a new event.
 
 ## 7. Testing
 
-Two layers, both in `GameCapture.Sdk.Testing` — a real package, not `InternalsVisibleTo`, so it works
+Two layers, both in `Ocrx.Sdk.Testing` — a real package, not `InternalsVisibleTo`, so it works
 from a plugin's own repository.
 
 The template ([§2](#2-creating-the-project)) scaffolds `tests/MyPlugin.Tests.csproj` already wired
-with `Microsoft.NET.Test.Sdk`, `xunit`, and a `PackageReference` on `GameCapture.Sdk.Testing` —
+with `Microsoft.NET.Test.Sdk`, `xunit`, and a `PackageReference` on `Ocrx.Sdk.Testing` —
 nothing to set up by hand. Building a test project from scratch (no template available) is in
 [Appendix: manual project setup](#appendix-manual-project-setup).
 
@@ -444,8 +444,8 @@ For a host test, pass `FakeRecordSink` through the public `PluginHostOptions.Sin
 `Received` list captures every delivered `CaptureRecord`, including clears.
 
 ```csharp
-using GameCapture.Sdk;
-using GameCapture.Sdk.Testing;
+using Ocrx.Sdk;
+using Ocrx.Sdk.Testing;
 using Xunit;
 
 namespace MyPlugin.Tests;
@@ -490,8 +490,8 @@ reads word geometry), `.Pixels(id, b, g, r, w, h)`, `.Errored(id, message)`, plu
 `FakePluginServices` exposes `Emitted`, `Cleared`, `Logs`, `VerboseLogs`, a settable `Engine`, and
 `DumpFrameHandler` / `ReadRoiHandler` for the calibration paths.
 
-**Parity: `ReplayHarness`.** This spawns a real `GameCapture.Engine.exe` replaying a PNG corpus and drives
-the plugin through its real `GameCapturePluginHost` path — public SDK plus an engine binary, no in-proc
+**Parity: `ReplayHarness`.** This spawns a real `Ocrx.Engine.exe` replaying a PNG corpus and drives
+the plugin through its real `OcrxPluginHost` path — public SDK plus an engine binary, no in-proc
 shortcuts. It is what a plugin's CI runs.
 
 ```csharp
@@ -529,15 +529,15 @@ public class ReplayParityTests
 }
 ```
 
-**`GAMECAPTURE_ENGINE_PATH` is effectively required for a plugin outside this repository.**
+**`OCRX_ENGINE_PATH` is effectively required for a plugin outside this repository.**
 `EngineLocator.Resolve()` uses that env var when set, and otherwise falls back to walking up from the
-test assembly's output looking for `src/GameCapture.Engine/bin` — a path that exists only inside a clone
+test assembly's output looking for `src/Ocrx.Engine/bin` — a path that exists only inside a clone
 of the engine repo. From a plugin's own repo the fallback finds nothing and `Resolve()` throws
 `InvalidOperationException`, so point the variable at the engine you unpacked or built in
 [§1](#1-prerequisites):
 
 ```powershell
-$env:GAMECAPTURE_ENGINE_PATH = "C:\tools\gamecapture\GameCapture.Engine.exe"
+$env:OCRX_ENGINE_PATH = "C:\tools\ocrx\Ocrx.Engine.exe"
 ```
 
 CI does the same thing, pinning it to the exact artifact it downloaded or built.
@@ -545,9 +545,9 @@ CI does the same thing, pinning it to the exact artifact it downloaded or built.
 frames measures in seconds, so a fired timeout means something is stuck.
 
 **Capturing the corpus** is a live, in-game step: run the engine with `--save-frames`, press the
-configured hotkey (`%LOCALAPPDATA%\GameCapture\engine-config.json`'s `hotkey`, default `Ctrl+Shift+F12`, logged at startup) at
+configured hotkey (`%LOCALAPPDATA%\Ocrx\engine-config.json`'s `hotkey`, default `Ctrl+Shift+F12`, logged at startup) at
 each stage worth a frame. Each press writes one full-frame PNG into the engine's own output
-directory — `%LOCALAPPDATA%\GameCapture\engine-config.json`'s `outputDir`, `captures/` by default, resolved relative to the
+directory — `%LOCALAPPDATA%\Ocrx\engine-config.json`'s `outputDir`, `captures/` by default, resolved relative to the
 config file and printed as `Dumps:` on startup. Copy those PNGs into `Fixtures/Replay/<name>/` and
 copy them to the test output:
 
@@ -568,24 +568,24 @@ replay never drops a tick, are in [`REPLAY.md`](REPLAY.md).
 Verified against a project built outside this repository:
 
 ```powershell
-dotnet new gamecapture-plugin -n MyPlugin   # §2 — then rename/fill in MyPlugin.cs per §3
+dotnet new ocrx-plugin -n MyPlugin   # §2 — then rename/fill in MyPlugin.cs per §3
 dotnet build MyPlugin -c Release            # SDK + contracts restore from nuget.org
 
 # Unit tests only. The parity test from §7 spawns a real engine, so it is filtered out
-# here — run it once GAMECAPTURE_ENGINE_PATH and a corpus are in place.
+# here — run it once OCRX_ENGINE_PATH and a corpus are in place.
 dotnet test MyPlugin\tests\MyPlugin.Tests.csproj -c Release --filter "Category!=Integration"
 ```
 
 Then, with an engine running:
 
 ```powershell
-dotnet run --project <clone>\src\GameCapture.Engine     # terminal 1
+dotnet run --project <clone>\src\Ocrx.Engine     # terminal 1
 dotnet run --project MyPlugin -- --verbose         # terminal 2
 ```
 
 The plugin prints its banner, `waiting for engine on pipe '<name>'...`, and then — once connected —
 the engine version, frame size, cadence, and its own ROI ids. If it waits forever, the pipe names
-disagree: check `config.json` against `%LOCALAPPDATA%\GameCapture\engine-config.json`, or pass `--pipe <name>` to both.
+disagree: check `config.json` against `%LOCALAPPDATA%\Ocrx\engine-config.json`, or pass `--pipe <name>` to both.
 
 ## 9. Config, CLI, and compatibility
 
@@ -612,7 +612,7 @@ public sealed class MyConfig : PluginConfig
 
 // Program.cs, for a plugin that takes its settings as a constructor argument
 var config = PluginConfig.Load<MyConfig>(Path.Combine(AppContext.BaseDirectory, "config.json"));
-return await GameCapturePluginHost.RunAsync(new MyPlugin.LedgerPlugin(config), args,
+return await OcrxPluginHost.RunAsync(new MyPlugin.LedgerPlugin(config), args,
     new PluginHostOptions { Config = config });
 ```
 
@@ -698,7 +698,7 @@ proto type, never `Grpc.*`) is the one that survives a wire change; CI greps for
 
 ## Appendix: manual project setup
 
-Only needed when `GameCapture.Plugin.Template` cannot be installed. Five files — three here, two in
+Only needed when `Ocrx.Plugin.Template` cannot be installed. Five files — three here, two in
 [§3](#3-anatomy-of-a-plugin) — plus a test project.
 
 A plugin is an ordinary console exe:
@@ -725,8 +725,8 @@ dotnet new console -n MyPlugin
   <!-- One version train: Sdk, Contracts and Sdk.Testing always move together, so pin all
        three to the same version — see COMPATIBILITY.md. -->
   <ItemGroup>
-    <PackageReference Include="GameCapture.Sdk" Version="1.*" />
-    <PackageReference Include="GameCapture.Contracts" Version="1.*" />
+    <PackageReference Include="Ocrx.Sdk" Version="1.*" />
+    <PackageReference Include="Ocrx.Contracts" Version="1.*" />
   </ItemGroup>
 
   <ItemGroup>
@@ -741,7 +741,7 @@ pipe name must match the engine's:
 
 ```json
 {
-  "pipeName": "GameCapture.Engine",
+  "pipeName": "Ocrx.Engine",
   "saveDebugFrames": false
 }
 ```
@@ -750,9 +750,9 @@ pipe name must match the engine's:
 (argument parsing, the connect/reconnect loop, Ctrl+C, the summary) lives in the host now:
 
 ```csharp
-using GameCapture.Sdk;
+using Ocrx.Sdk;
 
-return await GameCapturePluginHost.RunAsync(new MyPlugin.CounterPlugin(), args);
+return await OcrxPluginHost.RunAsync(new MyPlugin.CounterPlugin(), args);
 ```
 
 `CounterPlugin.cs` and `Rois.cs` are [§3](#3-anatomy-of-a-plugin).
@@ -782,7 +782,7 @@ The test project — `dotnet new xunit -n MyPlugin.Tests`, then:
   <ItemGroup>
     <ProjectReference Include="..\MyPlugin\MyPlugin.csproj" />
     <!-- TickDataBuilder, FakePluginServices, ReplayHarness — same version as the SDK above. -->
-    <PackageReference Include="GameCapture.Sdk.Testing" Version="1.*" />
+    <PackageReference Include="Ocrx.Sdk.Testing" Version="1.*" />
   </ItemGroup>
 
 </Project>

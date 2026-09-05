@@ -1,9 +1,9 @@
 # Compatibility
 
-What version of what talks to what, across the split (`gamecapture-engine` ships the engine,
-`GameCapture.Contracts`, `GameCapture.Sdk`, `GameCapture.Sdk.Testing`, `GameCapture.Sdk.Overlay`,
+What version of what talks to what, across the split (`ocrx-engine` ships the engine,
+`Ocrx.Contracts`, `Ocrx.Sdk`, `Ocrx.Sdk.Testing`, `Ocrx.Sdk.Overlay`,
 and the plugin template;
-`gamecapture-plugins` consumes them). See [`docs/PROTOCOL.md`](PROTOCOL.md#version-policy) for how
+`ocrx-plugins` consumes them). See [`docs/PROTOCOL.md`](PROTOCOL.md#version-policy) for how
 the protocol integer itself is governed — this doc is the release-facing matrix and the rules for
 bumping each of the three version axes.
 
@@ -11,7 +11,7 @@ bumping each of the three version axes.
 
 | Protocol | Engine | SDK / Contracts / Sdk.Testing / Sdk.Overlay / Plugin.Template | Notes |
 | --- | --- | --- | --- |
-| 1 | v1.0.0+ | v1.0.0+ (`Sdk.Overlay`: v1.1.0+) | First published set, tagged from `gamecapture-engine` itself — not this mono-repo, which never publishes a `v1.0.0`. The v1.1.0 output-sinks train is additive: `CaptureRecord.Kind`/`Fields`, JSON/CSV/HTTP outputs, and the new opt-in `GameCapture.Sdk.Overlay` package. v1.1.5 is additive too: `ConfigSeed` plus `PluginConfig.ConfigVersion`, which let a plugin ship a default to users who have already run it once. No `capture.proto` edit: protocol remains 1. |
+| 1 | v1.0.0+ | v1.0.0+ (`Sdk.Overlay`: v1.1.0+) | First published set, tagged from `ocrx-engine` itself — not this mono-repo, which never publishes a `v1.0.0`. The v1.1.0 output-sinks train is additive: `CaptureRecord.Kind`/`Fields`, JSON/CSV/HTTP outputs, and the new opt-in `Ocrx.Sdk.Overlay` package. v1.1.5 is additive too: `ConfigSeed` plus `PluginConfig.ConfigVersion`, which let a plugin ship a default to users who have already run it once. No `capture.proto` edit: protocol remains 1. |
 
 A new row is added whenever protocol `Min` or `Current` moves (see below); package version bumps
 that don't touch the protocol integer extend the existing row's floor instead of adding one.
@@ -19,11 +19,11 @@ that don't touch the protocol integer extend the existing row's floor instead of
 ## Rules
 
 - **SDK/Contracts/Sdk.Testing/Sdk.Overlay minor or patch bump is always safe.** The plugin template pins
-  `Version="1.*"` (`templates/gamecapture-plugin/.template.config/template.json`'s `SdkVersion`
+  `Version="1.*"` (`templates/ocrx-plugin/.template.config/template.json`'s `SdkVersion`
   symbol), so a plugin picks up new minors on its next restore with no source change required.
 - **SDK/Contracts major bump means plugin source changes are expected.** Treat it like any other
   breaking NuGet release: plugins update on their own schedule, pinning the old major until they do.
-- **Protocol bump is a third, independent axis** (`GameCapture.Contracts/ProtocolVersion.cs`) —
+- **Protocol bump is a third, independent axis** (`Ocrx.Contracts/ProtocolVersion.cs`) —
   moving it does not require a package major, and a package major does not require a protocol bump.
   When `Current` moves, the engine advertises `[Min, Current]` on `GetStatus` and a plugin negotiates
   down automatically (`docs/PROTOCOL.md#handshake`); when `Min` moves, every plugin below it is
@@ -38,7 +38,7 @@ that don't touch the protocol integer extend the existing row's floor instead of
 
 ## Release checklist
 
-1. Merge the release PR into `master` in the repo that owns what changed (`gamecapture-engine` for
+1. Merge the release PR into `master` in the repo that owns what changed (`ocrx-engine` for
    engine/SDK/Contracts/Sdk.Testing/Sdk.Overlay/template; plugin releases are the plugins repo's own
    releases and don't get a matrix row). The engine release workflow increments the patch version from
    the latest stable `vX.Y.Z` tag, creates that tag, and publishes the compatible artifact set.

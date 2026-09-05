@@ -1,202 +1,108 @@
-name: Release
+name: Release engine
 
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable semver to publish
+        required: true
+        default: 2.0.0
 
-# A queued merge must see the tag created by the preceding release before it computes its version.
-# Without serialization, two near-simultaneous merges can both select the same next patch version.
 concurrency:
-  group: release-master
+  group: release-engine
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Build & Release
+    name: Publish Windows beta
     runs-on: windows-latest
-    environment: nuget-release
     permissions:
-      id-token: write # mints the OIDC token — without it NuGet/login fails
-      contents: write # gh release create; a permissions block zeroes all unlisted scopes, so this
-                       # must be spelled out even though it was the workflow default before.
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          # Unshallow so the version step can see the complete stable-tag history. A depth-1 clone
-          # carries no tags, leaving MinVer and the release-version calculation without the train's
-          # actual base version.
           fetch-depth: 0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-
-      # Restores `vpk` (the Velopack CLI) from .config/dotnet-tools.json. A pinned local tool rather
-      # than `dotnet tool install -g vpk`, so the packer version is reviewable in git and a run six
-      # months from now cuts the installer with the same CLI this one did — Velopack's flags have
-      # drifted across versions. The manifest pins vpk to the same version as the Velopack
-      # PackageReference in GameCapture.Engine.csproj; vpk warns when the two disagree.
-      - name: Restore dotnet tools
-        run: dotnet tool restore
-
-      # Every merge to master is a release. The workflow owns the tag so packages, the engine and
-      # the GitHub release all carry the same stable version. Pre-release tags are ignored: they are
-      # historical rehearsal tags and must not become the base for the next production patch.
-      - name: Compute next release version
+      - name: Validate release access and version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.OCRX_RELEASES_TOKEN }}
+        run: |
+          $version = '${{ inputs.version }}'
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Expected stable semver, got '$version'." }
+          if (-not $env:GH_TOKEN) { throw 'OCRX_RELEASES_TOKEN is required to publish the public binary feed.' }
+          gh api repos/PetitCastor/ocrx-releases --silent
+          if (git tag --list "v$version") { throw "Private engine tag v$version already exists." }
+          gh release view "v$version" --repo PetitCastor/ocrx-releases *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Public release v$version already exists." }
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - run: dotnet tool restore
+      - run: dotnet restore OcrxEngine.slnx
+      - run: dotnet build OcrxEngine.slnx --no-restore -c Release "-p:MinVerVersionOverride=$env:RELEASE_VERSION"
+      - run: dotnet test OcrxEngine.slnx --no-build -c Release --verbosity normal
+      - name: Publish engine
+        run: dotnet publish src/Ocrx.Engine/Ocrx.Engine.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true "-p:MinVerVersionOverride=$env:RELEASE_VERSION" -o publish/engine
+      - name: Create automation archive
         shell: pwsh
         run: |
-          $stableTags = git tag --list 'v*' |
-            Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
-            ForEach-Object { [pscustomobject]@{ Tag = $_; Version = [version]($_.Substring(1)) } } |
-            Sort-Object Version
-          $latest = $stableTags | Select-Object -Last 1
-          if (-not $latest) {
-            throw 'No stable vX.Y.Z tag exists; seed the release train before enabling automatic releases.'
-          }
-          $next = [version]::new($latest.Version.Major, $latest.Version.Minor, $latest.Version.Build + 1)
-          "RELEASE_VERSION=$next" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "RELEASE_TAG=v$next" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Releasing $next from $($latest.Tag) at $env:GITHUB_SHA"
-
-      # Full suite, same as ci.yml — the push to master is the release event, but this job still
-      # re-verifies the merge commit rather than trusting a PR run from a different ref.
-      - name: Restore
-        run: dotnet restore GameCaptureEngine.slnx
-
-      - name: Build
-        run: dotnet build GameCaptureEngine.slnx --no-restore -c Release "-p:MinVerVersionOverride=$env:RELEASE_VERSION"
-
-      - name: Test
-        run: dotnet test GameCaptureEngine.slnx --no-build -c Release --verbosity normal
-
-      # The solution contains every library package on the train, including the opt-in overlay:
-      # Contracts, Sdk, Sdk.Testing, and Sdk.Overlay. The template is packed separately below.
-      - name: Pack library packages
-        run: dotnet pack GameCaptureEngine.slnx --no-build -c Release -o packages "-p:MinVerVersionOverride=$env:RELEASE_VERSION"
-
-      # Not part of GameCaptureEngine.slnx by design (it must never join the main build,
-      # or its EnableDefaultItems=false untouched-content model breaks), so the slnx pack above
-      # never sees it. Packed separately, into the same output dir, so the push steps below pick
-      # it up alongside the other four package IDs without a change to their globs.
-      - name: Pack template
-        run: dotnet pack templates/GameCapture.Plugin.Template.csproj -c Release -o packages "-p:MinVerVersionOverride=$env:RELEASE_VERSION"
-
-      # The release tag is created after the artifacts are built, so MinVer needs the explicit
-      # version override for this merge commit. The tag then makes that version reproducible for
-      # future checkouts and becomes the base for the next merge.
-      - name: Publish GameCapture.Engine
-        run: dotnet publish src/GameCapture.Engine -c Release -r win-x64 --self-contained -p:PublishSingleFile=true "-p:MinVerVersionOverride=$env:RELEASE_VERSION" -o publish/engine
-
-      # Named files, not `publish/engine/*`: the publish output carries more than a release should.
-      # PublishSingleFile bundles the managed assemblies into the exe but leaves .pdb files loose,
-      # GenerateDocumentationFile in the referenced libraries drops .xml next to them, and the
-      # Microsoft.AspNetCore.App framework reference contributes aspnetcorev2_inprocess.dll (the IIS
-      # in-process handler — never loaded by a Kestrel-on-named-pipes host, and not bundled because
-      # IncludeNativeLibrariesForSelfExtract is off). The archive intentionally includes only the
-      # executable: engine-config.json is now user-local under %LOCALAPPDATA%, and EngineConfig
-      # creates the defaults on first launch. Listing the executable explicitly means the release
-      # contents cannot drift with the publish layout; the Test-Path guard turns a renamed or missing
-      # executable into a failed release rather than a silently incomplete zip.
-      - name: Archive GameCapture.Engine
-        run: |
-          $files = 'publish/engine/GameCapture.Engine.exe'
-          $missing = $files | Where-Object { -not (Test-Path $_) }
-          if ($missing) { throw "Missing from publish output: $($missing -join ', ')" }
-          Compress-Archive -Path $files -DestinationPath "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip"
-
-      # Velopack turns the same publish output into an installer. The zip above is deliberately NOT
-      # replaced: gamecapture-plugins' ci.yml and release.yml both resolve the pinned engine with
-      # `gh release download -p "GameCapture.Engine-*-win-x64.zip"` followed by Expand-Archive, so
-      # renaming or dropping that asset breaks plugin CI on the next tag. Setup.exe is an addition
-      # for humans; the zip stays the machine-readable contract.
-      #
-      # packId is the permanent identity of the update feed — every future release must keep using
-      # GameCaptureEngine or existing installs stop seeing updates. It is spelled without dots so it
-      # cannot collide with the `GameCapture.Engine-*` zip glob above.
-      #
-      # --noPortable: vpk's portable bundle would duplicate what the zip already provides, under a
-      # second name, and only invites confusion about which artifact plugin CI wants.
-      # --exclude widens vpk's default (.pdb only) to the rest of what PublishSingleFile leaves
-      # loose next to the exe — the .xml docs GenerateDocumentationFile drops from the referenced
-      # libraries. See the Archive step's comment for the full inventory.
-      # The Test-Path guard mirrors that step: a vpk that silently produced nothing must fail the
-      # release, not ship a tag whose Setup.exe is missing.
-      - name: Package Velopack installer
+          $exe = 'publish/engine/Ocrx.Engine.exe'
+          if (-not (Test-Path $exe)) { throw "Missing $exe." }
+          Compress-Archive -Path $exe -DestinationPath "Ocrx.Engine-$env:RELEASE_TAG-win-x64.zip"
+      - name: Create Velopack installer and update feed
+        shell: pwsh
         run: |
           dotnet vpk pack `
-            --packId GameCaptureEngine `
-            --packVersion "${env:RELEASE_VERSION}" `
+            --packId OcrxEngine `
+            --packVersion $env:RELEASE_VERSION `
             --packDir publish/engine `
-            --mainExe GameCapture.Engine.exe `
-            --packTitle "GameCapture Engine" `
-            --packAuthors "PetitCastor" `
+            --mainExe Ocrx.Engine.exe `
+            --packTitle 'OCRX Engine' `
+            --packAuthors PetitCastor `
             --icon assets/app.ico `
             --exclude '.*\.(pdb|xml)$' `
             --noPortable `
             --outputDir releases
-          $expected = @(
-            "releases/GameCaptureEngine-win-Setup.exe"
-            "releases/releases.win.json"
-            "releases/GameCaptureEngine-${env:RELEASE_VERSION}-full.nupkg"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($path in @(
+            'releases/OcrxEngine-win-Setup.exe',
+            'releases/releases.win.json',
+            "releases/OcrxEngine-$env:RELEASE_VERSION-full.nupkg"
+          )) {
+            if (-not (Test-Path $path)) { throw "Missing release artifact $path." }
+          }
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          $paths = @(
+            "Ocrx.Engine-$env:RELEASE_TAG-win-x64.zip",
+            'releases/OcrxEngine-win-Setup.exe',
+            'releases/releases.win.json',
+            "releases/OcrxEngine-$env:RELEASE_VERSION-full.nupkg"
           )
-          $missing = $expected | Where-Object { -not (Test-Path $_) }
-          if ($missing) { throw "vpk pack did not produce: $($missing -join ', ')" }
-
-      # GitHub release created BEFORE the NuGet push, and named explicitly rather than via a glob:
-      # windows-latest's default shell is pwsh, and pwsh does not glob-expand arguments to native
-      # executables (only cmdlet parameters) — `GameCapture.Engine-*.zip` reaches `gh` as that
-      # literal string, `gh` does not glob either, and every run that tried it failed here. The name
-      # was already computed to build the archive above, so reusing it can't drift.
-      # Ordered ahead of the NuGet steps on purpose: if the OIDC exchange or the nuget.org push
-      # fails, the GitHub release and its engine zip have already landed rather than being lost
-      # along with it.
-      #
-      # Four assets now. The zip is first and unchanged — it is what gamecapture-plugins downloads.
-      # Setup.exe is what a human installs. releases.win.json is the update feed Velopack's
-      # UpdateManager reads off this release, and the -full.nupkg is the payload that feed points
-      # at: both must be present on every release or an installed engine cannot self-update, so
-      # they are release assets rather than build-only artifacts.
-      - name: Create release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${env:RELEASE_TAG}" `
-            "GameCapture.Engine-${env:RELEASE_TAG}-win-x64.zip" `
-            "releases/GameCaptureEngine-win-Setup.exe" `
-            "releases/releases.win.json" `
-            "releases/GameCaptureEngine-${env:RELEASE_VERSION}-full.nupkg" `
-            --title "${env:RELEASE_TAG}" --generate-notes --target "${{ github.sha }}"
-
-      # OIDC → short-lived API key, scoped to this job only. No NUGET_API_KEY secret exists anywhere
-      # in this repo: nothing long-lived to rotate or leak.
-      - name: NuGet login (Trusted Publishing)
-        id: nuget-login
-        uses: NuGet/login@v1
-        with:
-          user: ${{ vars.NUGET_USER }}
-
-      # Same pwsh-doesn't-glob-native-args issue as the zip name above: "packages/*.nupkg" reaches
-      # dotnet.exe as one literal string, and its own internal glob resolution failed to match it
-      # (v1.0.0-rc.1 rehearsal: "error: File does not exist (packages/*.nupkg)" with 4 real nupkgs
-      # sitting right there). Expand the glob in pwsh instead and push each file by its resolved path.
-      - name: Push packages
-        env:
-          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-        run: |
-          Get-ChildItem packages\*.nupkg | ForEach-Object {
-            dotnet nuget push $_.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          $lines = foreach ($path in $paths) {
+            $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($path))"
           }
-
-      # Kept as its own push rather than relying on the main push's automatic co-located-snupkg
-      # pickup, so a `.snupkg` sitting anywhere `packages/*.nupkg` doesn't literally match (a future
-      # output-layout change, a partial `dotnet pack` re-run) still ships. --skip-duplicate makes the
-      # common case — the main push already uploaded it — a no-op 409, not a failure.
-      - name: Push symbol packages
+          $lines | Set-Content SHA256SUMS.txt -Encoding ascii
+      - name: Publish public release
+        shell: pwsh
         env:
-          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+          GH_TOKEN: ${{ secrets.OCRX_RELEASES_TOKEN }}
         run: |
-          Get-ChildItem packages\*.snupkg | ForEach-Object {
-            dotnet nuget push $_.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
-          }
+          gh release create $env:RELEASE_TAG `
+            --repo PetitCastor/ocrx-releases `
+            --title "OCRX $env:RELEASE_TAG" `
+            --notes "Free unsigned Windows beta. Verify SHA256SUMS.txt before bypassing SmartScreen." `
+            "Ocrx.Engine-$env:RELEASE_TAG-win-x64.zip" `
+            'releases/OcrxEngine-win-Setup.exe' `
+            'releases/releases.win.json' `
+            "releases/OcrxEngine-$env:RELEASE_VERSION-full.nupkg" `
+            'SHA256SUMS.txt'
+      - name: Tag private source
+        shell: pwsh
+        run: |
+          git tag $env:RELEASE_TAG $env:GITHUB_SHA
+          git push origin $env:RELEASE_TAG

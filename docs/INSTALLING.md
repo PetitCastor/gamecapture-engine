@@ -1,12 +1,12 @@
 # Installing the engine
 
-Two ways to get a running `GameCapture.Engine.exe`. Pick the installer if you are a user; pick the
+Two ways to get a running `Ocrx.Engine.exe`. Pick the installer if you are a user; pick the
 zip if you are a script.
 
 ## Installer (recommended)
 
-1. Open [Releases](https://github.com/PetitCastor/gamecapture-engine/releases) and download
-   `GameCaptureEngine-Setup.exe` from the latest release.
+1. Open [Releases](https://github.com/PetitCastor/ocrx-releases/releases) and download
+   `OcrxEngine-Setup.exe` from the latest release.
 2. Run it. There are no prompts and no options — it installs per-user, so no administrator
    elevation is requested.
 3. The engine launches straight to the notification area. There is no main window: normal launches
@@ -19,18 +19,18 @@ Apps → Installed apps** like any other application.
 Windows will warn that the publisher is unknown, because the installer is unsigned — code signing
 is deliberately deferred. Choose **More info → Run anyway**.
 
-The engine installs to `%LOCALAPPDATA%\GameCaptureEngine`. Its configuration lives separately at
-`%LOCALAPPDATA%\GameCapture\engine-config.json` and is written with defaults on first launch, so
+The engine installs to `%LOCALAPPDATA%\OcrxEngine`. Its configuration lives separately at
+`%LOCALAPPDATA%\OCRX\engine-config.json` and is written with defaults on first launch, so
 neither installing nor uninstalling disturbs your settings.
 
 ## Zip (CI, portable use, side-by-side versions)
 
-Every release also carries `GameCapture.Engine-vX.Y.Z-win-x64.zip`: the same self-contained exe,
+Every release also carries `Ocrx.Engine-vX.Y.Z-win-x64.zip`: the same self-contained exe,
 with no installer, no shortcuts and no update feed. Extract it anywhere and run it.
 
 This is what the plugins repo's CI downloads to get an engine binary for replay-parity tests, and
 it is the right choice whenever you need a specific version at a path you control — for example
-pointing `GAMECAPTURE_ENGINE_PATH` at it. The asset name is stable and is not going to change.
+pointing `OCRX_ENGINE_PATH` at it. The asset name is stable and is not going to change.
 
 ## Getting plugins
 
@@ -44,13 +44,13 @@ while it runs. Nothing starts on its own: the engine launches a plugin only when
 restart one that exits, and stops the ones it started when you exit the engine. Changing a setting
 or the captured monitor restarts the engine, which also stops them.
 
-Plugins install per user under `%LOCALAPPDATA%\GameCapture\plugins\<plugin-id>`, beside the engine
+Plugins install per user under `%LOCALAPPDATA%\OCRX\plugins\<plugin-id>`, beside the engine
 configuration and outside the engine's own install directory — so updating or uninstalling the
 engine leaves them alone. Removing a plugin from the dialog deletes that folder.
 
 Two limits are enforced in code rather than left to trust. The catalog URL and the download hosts
 are fixed: the engine will only install from
-[`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins) releases, and it
+[`ocrx-plugins`](https://github.com/PetitCastor/ocrx-plugins) releases, and it
 re-checks every redirect a download follows, so an entry pointing anywhere else is shown as
 **Blocked** with no way to install it. And a downloaded archive must unpack entirely inside its own
 plugin folder and contain exactly one executable, or it is rejected before anything is written.
@@ -74,5 +74,5 @@ self-contained, so no .NET runtime install is required.
 
 ## The other release assets
 
-`releases.win.json` and `GameCaptureEngine-X.Y.Z-full.nupkg` are the Velopack update feed and its
+`releases.win.json` and `OcrxEngine-X.Y.Z-full.nupkg` are the Velopack update feed and its
 payload. They are consumed by an installed engine, not by you — ignore them.

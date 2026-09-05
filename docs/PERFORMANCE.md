@@ -6,7 +6,7 @@ correctness and a before/after delta on the same machine.
 
 ## Scope
 
-`benchmarks/GameCapture.Engine.Benchmarks` covers the engine hot-path work most likely to change in
+`benchmarks/Ocrx.Engine.Benchmarks` covers the engine hot-path work most likely to change in
 PRs 8 and 9:
 
 - OCR crop and scale (`OcrPipeline.CropAndScaleAsync`)
@@ -47,7 +47,7 @@ These values are evidence for same-machine comparisons in PRs 8 and 9, not porta
 Run the suite with:
 
 ```powershell
-dotnet run --project benchmarks/GameCapture.Engine.Benchmarks -c Release -- --job short
+dotnet run --project benchmarks/Ocrx.Engine.Benchmarks -c Release -- --job short
 ```
 
 ## PR 8 — equivalent ROI processing

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Ocrx.Engine.Benchmarks/Ocrx.Engine.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Ocrx.Engine/Ocrx.Engine.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ocrx.Engine.Tests/Ocrx.Engine.Tests.csproj" />
+  </Folder>
+</Solution>

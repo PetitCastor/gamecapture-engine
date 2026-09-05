@@ -17,8 +17,8 @@ what each RPC actually does and every wire budget/constant, see
 
 | | |
 | --- | --- |
-| Endpoint | Windows named pipe, default `GameCapture.Engine` (`GameCapture.Contracts/PipeContract.cs`) |
-| Override | engine `--pipe <name>` / `%LOCALAPPDATA%\GameCapture\engine-config.json`; each plugin's `config.json` must match |
+| Endpoint | Windows named pipe, default `OCRX.Engine` (`Ocrx.Contracts/PipeContract.cs`) |
+| Override | engine `--pipe <name>` / `%LOCALAPPDATA%\OCRX\engine-config.json`; each plugin's `config.json` must match |
 | Protocol | gRPC over HTTP/2, prior knowledge (`GrpcHost.cs:38` forces `HttpProtocols.Http2`) |
 | Security | Plaintext. A pipe carries no TLS to negotiate with; it inherits the logon session's ACL, and the engine is a per-user process |
 | Connections | One channel per plugin process (`NamedPipeChannel.Create`), one `Track` stream per channel |
@@ -31,8 +31,8 @@ A pipe that nobody serves makes the dial *block* rather than fail, which is why 
 
 ```mermaid
 sequenceDiagram
-    participant P as Plugin (GameCapture.Sdk)
-    participant E as GameCapture.Engine
+    participant P as Plugin (Ocrx.Sdk)
+    participant E as Ocrx.Engine
 
     P->>E: GetStatus()
     E-->>P: StatusResponse(min_supported_protocol, max_supported_protocol, ...)
@@ -46,7 +46,7 @@ sequenceDiagram
             E-->>P: TickResult
         end
     else v outside the engine's range
-        E-->>P: FAILED_PRECONDITION + trailers<br/>gamecapture-protocol-min / gamecapture-protocol-max
+        E-->>P: FAILED_PRECONDITION + trailers<br/>ocrx-protocol-min / ocrx-protocol-max
         Note over P: ProtocolMismatchException — never retried
     end
 ```
@@ -71,7 +71,7 @@ Rules, both sides:
 
 ## Version policy
 
-One unsigned integer, `GameCapture.Contracts/ProtocolVersion.cs` (`Current`, `Min`; both 1 today). It is
+One unsigned integer, `Ocrx.Contracts/ProtocolVersion.cs` (`Current`, `Min`; both 1 today). It is
 independent of the assembly/package version — this is the go-plugin model: artifact versions say what
 was built, the protocol version says what can talk to what.
 

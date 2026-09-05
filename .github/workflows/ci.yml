@@ -4,291 +4,45 @@ on:
   pull_request:
     branches: [master]
 
-# No job here pushes, releases, or comments — read-only checkout is all any of them need.
 permissions:
   contents: read
 
 jobs:
-  overlay-portability:
-    name: Overlay portability
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      # The overlay intentionally targets plain net10.0. Building and testing its policy seam on
-      # Linux proves the package never acquired a Windows TFM or an eager System.Drawing call; the
-      # factory must degrade to a no-op there while the Win32 implementation remains inert.
-      - name: Build and test overlay package
-        run: dotnet test tests/GameCapture.Sdk.Overlay.Tests/GameCapture.Sdk.Overlay.Tests.csproj -c Release
-
   build-test:
-    name: Build & Test
+    name: Build and test private engine
     runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          # Unshallow, and specifically for the tags: MinVer derives the version from the height
-          # above the latest v* tag, and checkout's default depth-1 clone carries no tags at all.
-          # Without this the whole build silently versions itself 0.0.0-alpha.0 — packages, the
-          # engine's reported engine_version, everything — and nothing fails to say so.
-          # EngineVersionTests is the guard that turns that into a red build.
           fetch-depth: 0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - run: dotnet restore OcrxEngine.slnx
+      - run: dotnet build OcrxEngine.slnx --no-restore -c Release
+      - run: dotnet build benchmarks/Ocrx.Engine.Benchmarks/Ocrx.Engine.Benchmarks.csproj --no-restore -c Release
+      - run: dotnet test OcrxEngine.slnx --no-build -c Release --verbosity normal
 
-      # Whole solution in one shot: the wire contract (protoc codegen included, the most breakable
-      # part), the engine, all SDK packages and all five test projects. A green CI that skipped any
-      # of them would be shipping packages whose halves no longer join back up.
-      - name: Restore
-        run: dotnet restore GameCaptureEngine.slnx
-
-      - name: Build
-        run: dotnet build GameCaptureEngine.slnx --no-restore -c Release
-
-      - name: Build benchmarks
-        run: dotnet build benchmarks/GameCapture.Engine.Benchmarks/GameCapture.Engine.Benchmarks.csproj --no-restore -c Release
-
-      - name: Test
-        run: dotnet test GameCaptureEngine.slnx --no-build -c Release --verbosity normal
-
-      # Scoped to the test projects named directly after the three packages that ship (Contracts,
-      # Engine, Sdk). GameCapture.Sdk.Testing ships too but is measured by its own dedicated suite,
-      # not this gate; -assemblyfilters below drops it out of the aggregate rather than let it sit
-      # half-counted (only incidentally touched via Engine.Tests' reference).
-      # Re-runs these three rather than reusing the Test step above because coverlet's collector
-      # only activates per-invocation via --collect, and mixing collected/uncollected projects in
-      # one `dotnet test GameCaptureEngine.slnx` call isn't possible — VSTest applies one settings
-      # file to the whole run.
-      - name: Test with coverage
-        shell: bash
-        run: |
-          rm -rf TestResults
-          for proj in GameCapture.Contracts.Tests GameCapture.Engine.Tests GameCapture.Sdk.Tests; do
-            dotnet test "tests/$proj/$proj.csproj" --no-build -c Release \
-              --collect:"XPlat Code Coverage" --settings coverlet.runsettings \
-              --results-directory TestResults
-          done
-          # A missing report would silently shrink the aggregate's denominator (e.g. the largest,
-          # least-covered assembly drops out and the remaining ones read comfortably over 60%)
-          # rather than fail loud, since `dotnet test` itself still exits 0 either way.
-          n=$(find TestResults -name coverage.cobertura.xml | wc -l)
-          if [ "$n" -ne 3 ]; then
-            echo "::error::expected 3 coverage.cobertura.xml reports, found $n"
-            exit 1
-          fi
-
-      - name: Coverage report
-        shell: bash
-        run: |
-          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.5.11 || \
-            dotnet tool update --global dotnet-reportgenerator-globaltool --version 5.5.11
-          reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" \
-            -targetdir:"CoverageReport" -reporttypes:TextSummary \
-            -assemblyfilters:"-*.Tests;-GameCapture.Sdk.Testing"
-          cat CoverageReport/Summary.txt
-
-      # Line-only, 60% to start (per TASK-17): the bar the coverlet.runsettings exclusions were
-      # written against. Parses ReportGenerator's own summary rather than the raw cobertura XML —
-      # one line-coverage number already aggregated across all three projects' merged reports,
-      # instead of three separate rates this step would otherwise have to combine itself.
-      - name: Coverage gate
-        shell: bash
-        run: |
-          pct=$(grep -oP 'Line coverage:\s*\K[0-9]+([.,][0-9]+)?' CoverageReport/Summary.txt | head -1 | tr ',' '.')
-          if [ -z "$pct" ]; then
-            echo "::error::could not parse line coverage from CoverageReport/Summary.txt"
-            cat CoverageReport/Summary.txt
-            exit 1
-          fi
-          echo "Line coverage: $pct% (threshold 60%)"
-          # awk, not bc: bash on windows-latest is Git Bash (MSYS), which does not ship bc.
-          if awk -v p="$pct" 'BEGIN { exit !(p < 60) }'; then
-            echo "::error::Coverage $pct% is below the 60% gate."
-            exit 1
-          fi
-
-  # The plugin-boundary grep gate that used to run here is gone: no plugin source lives in this
-  # repo, so the check would pass vacuously forever. It moves to gamecapture-plugins, re-pointed at
-  # that repo's src/, where it still means something.
-
-  # dotnet-template packages are the one asset `dotnet build` cannot see break: MSBuild compiles
-  # the template PROJECT's own (nonexistent, IncludeBuildOutput=false) output fine even after the
-  # C# content it ships goes stale — a dropped `using`, a renamed SDK API — because packing never
-  # compiles the Content items. Only instantiating the template and building/testing the result
-  # catches that. Packs the SDK trio + template from THIS commit (not the last release) into a
-  # scratch feed, so the guard tracks source, not history.
-  template-guard:
-    name: Template Guard
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Unshallow: MinVer needs tag history to version the scratch-feed packages below, same
-          # reason build-test's checkout does.
-          fetch-depth: 0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
-      # One project per `dotnet pack` call: despite its `[<PROJECT>...]` usage text, the CLI hands
-      # every path after the first straight to one MSBuild invocation, which rejects more than one
-      # project with MSB1008 "Only one project can be specified." Packed rather than built-then-
-      # `--no-build`: the template project doesn't sit in GameCaptureEngine.slnx (it must never
-      # join the main build, or its EnableDefaultItems=false untouched-content model breaks), so
-      # nothing has built it yet.
-      - name: Pack SDK trio + template into a scratch feed
-        shell: pwsh
-        run: |
-          foreach ($proj in 'src/GameCapture.Contracts','src/GameCapture.Sdk','src/GameCapture.Sdk.Testing','templates/GameCapture.Plugin.Template.csproj') {
-            dotnet pack $proj -c Release -o feed
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-
-      - name: Install template
-        shell: pwsh
-        run: |
-          $tmpl = Get-ChildItem feed/GameCapture.Plugin.Template.*.nupkg | Select-Object -First 1
-          if (-not $tmpl) { throw "GameCapture.Plugin.Template nupkg not found in feed — pack step above did not produce it" }
-          dotnet new install $tmpl.FullName
-
-      # This job always overrides the template's default SdkVersion (below), so it can't by itself
-      # catch the default going stale for a real consumer who omits --SdkVersion (the documented
-      # golden path, PLUGIN-AUTHORING.md §2). A mismatched major is EXPECTED right now — the
-      # default is "1.*" (locked in the TASK-18 spec, for after the v1.0.0 cut) while this repo's
-      # own train is still pre-1.0 — so this warns rather than fails: a hard assertion here would
-      # keep template-guard permanently red until TASK-21 tags v1.0.0, which is the wrong gate for
-      # a problem TASK-21's dry run already owns. It's a warning precisely so it stays visible
-      # every PR without blocking any of them.
-      - name: Warn if template default SdkVersion can't resolve against this train
-        shell: pwsh
-        run: |
-          $default = (Get-Content templates/gamecapture-plugin/.template.config/template.json -Raw | ConvertFrom-Json).symbols.SdkVersion.defaultValue
-          $sdk = Get-ChildItem feed -Filter 'GameCapture.Sdk.*.nupkg' | Where-Object { $_.Name -notmatch '^GameCapture\.Sdk\.Testing' } | Select-Object -First 1
-          if (-not $sdk) { throw "GameCapture.Sdk nupkg not found in feed — pack step above did not produce it" }
-          $packedMajor = ($sdk.BaseName -replace '^GameCapture\.Sdk\.', '').Split('.')[0]
-          $defaultMajor = $default.Split('.')[0]
-          if ($defaultMajor -ne $packedMajor) {
-            Write-Host "::warning::template's default SdkVersion '$default' (major $defaultMajor) does not resolve against this train's packed GameCapture.Sdk (major $packedMajor) — expected pre-v1.0.0, must be resolved by TASK-21 (dry run + v1.0.0)."
-          }
-
-      # The instantiated csproj wants the template's default SdkVersion, but this feed only holds
-      # an untagged commit's MinVer prerelease (e.g. 0.12.1-alpha.0.20) — a stable float default
-      # never matches a prerelease, so instantiating with the default would restore-fail against a
-      # feed that has nothing else. Reading the version back off the packed GameCapture.Sdk nupkg's
-      # own filename and passing it as --SdkVersion (the symbol
-      # templates/gamecapture-plugin/.template.config/template.json defines for exactly this) pins
-      # the instantiated project to what this job just packed. Filtered off GameCapture.Sdk.Testing,
-      # which the same glob would otherwise also match.
-      - name: Instantiate GuardPlugin
-        shell: pwsh
-        run: |
-          $sdk = Get-ChildItem feed -Filter 'GameCapture.Sdk.*.nupkg' | Where-Object { $_.Name -notmatch '^GameCapture\.Sdk\.Testing' } | Select-Object -First 1
-          if (-not $sdk) { throw "GameCapture.Sdk nupkg not found in feed — pack step above did not produce it" }
-          $version = $sdk.BaseName -replace '^GameCapture\.Sdk\.', ''
-          dotnet new gamecapture-plugin -n GuardPlugin -o "${{ runner.temp }}/GuardPlugin" --SdkVersion $version
-
-      # A fresh nuget.config scoped to the instantiated project directory: `dotnet nuget add source
-      # --configfile` requires the file to already exist, and the instantiated project must resolve
-      # GameCapture.Sdk/.Contracts/.Sdk.Testing from this job's scratch feed rather than whatever a
-      # real prerelease looks like on nuget.org (which may not have one at the pinned version, or
-      # may silently pick up the wrong one). Lowercase filename matches what `dotnet new nugetconfig`
-      # actually writes — case only goes unnoticed on windows-latest's case-insensitive filesystem.
-      - name: Point instantiated project at the scratch feed
-        shell: pwsh
-        run: |
-          $out = "${{ runner.temp }}/GuardPlugin"
-          dotnet new nugetconfig -o $out
-          dotnet nuget add source "$PWD/feed" --name template-guard-feed --configfile "$out/nuget.config"
-
-      # Content items a plugin never compiles (config.json, README.md, .gitignore, the shipped CI
-      # workflow) would still silently vanish from an instantiated project if NoDefaultExcludes
-      # (templates/GameCapture.Plugin.Template.csproj) or the Content glob ever regressed — nothing
-      # in a build+test catches a missing file that nothing references. Asserted directly instead.
-      - name: Assert template emitted its content
-        shell: pwsh
-        run: |
-          $out = "${{ runner.temp }}/GuardPlugin"
-          foreach ($f in 'GuardPlugin.csproj','Program.cs','Rois.cs','GuardPlugin.cs','config.json',
-                         'README.md','.gitignore','.github/workflows/ci.yml','tests/GuardPlugin.Tests.csproj') {
-            if (-not (Test-Path (Join-Path $out $f))) { throw "template did not emit $f" }
-          }
-          $null = Get-Content (Join-Path $out 'config.json') -Raw | ConvertFrom-Json
-
-      - name: Build + test instantiated plugin
-        shell: pwsh
-        run: |
-          $out = "${{ runner.temp }}/GuardPlugin"
-          dotnet build "$out/GuardPlugin.csproj" -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet test "$out/tests/GuardPlugin.Tests.csproj" -c Release
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-  # The wire contract is the one thing in this repo that two separately-shipped processes both
-  # depend on, and `dotnet build` cannot see a break in it: regenerating C# from a proto that
-  # dropped a field succeeds, and the plugin built against the old field only fails once it is
-  # running against the new engine. buf compares the PR's protos against master and fails on a
-  # wire- or JSON-incompatible change. Ubuntu because buf only reads .proto files — nothing here
-  # touches the Windows-only capture stack.
-  proto-guard:
-    name: Proto Lint & Breaking
+  identity-guard:
+    name: Public identity guard
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Unshallow: `breaking_against` resolves master out of the local .git, which a depth-1
-          # clone does not contain.
-          fetch-depth: 0
+      - uses: actions/checkout@v4
+      - name: Reject stale product identity
+        shell: bash
+        run: |
+          matches=$(grep -RInE '[G]ameCapture|[g]amecapture' . \
+            --exclude-dir=.git \
+            --exclude='LegacyMigration.cs' \
+            --exclude='LegacyMigrationTests.cs' || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            echo '::error::Stale v1 identity found outside intentional migration code.'
+            exit 1
+          fi
 
-      # checkout leaves a PR build on the merge commit with no local `master` — buf clones the
-      # local .git and looks for refs/heads/master, so without this the comparison fails with
-      # "couldn't find remote ref master" rather than passing. Skipped on a push to master, where
-      # the ref is already checked out and fetching into the current branch is refused by git.
-      - name: Fetch master (breaking-change baseline)
-        if: github.event_name == 'pull_request'
-        run: git fetch --no-tags origin +refs/heads/master:refs/heads/master
+      - name: Restore repository tools
+        run: dotnet tool restore
 
-      - name: Lint & breaking-change check
-        # Action pinned to a commit SHA, not the floating v1 tag: the `version:` pin below only
-        # freezes the buf CLI, while a new v1.x action release can still re-default an input (the
-        # push/archive defaults noted below are the action's, not the CLI's) and turn a PR that
-        # changed nothing red. Both halves have to be frozen for the gate to be deterministic.
-        uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3 # v1.5.0
-        with:
-          # Pinned rather than floating: a buf release that adds a lint rule would otherwise turn a
-          # green PR red without a change to this repo. Bump it deliberately.
-          version: 1.72.0
-          lint: true
-          # Only a PR has a baseline to compare against; on a push to master the comparison would
-          # be master against itself.
-          breaking: ${{ github.event_name == 'pull_request' }}
-          breaking_against: ".git#branch=master"
-          # Off deliberately. `buf format` would strip the aligned trailing comments capture.proto
-          # uses to document the coordinate space of every rect field, collapse the one-line
-          # messages, and rewrite the file to LF — a formatting opinion applied to the one file in
-          # the repo whose diffs most need to stay readable. Lint and breaking are the gates that
-          # protect consumers; formatting is not.
-          format: false
-          # Nothing to publish — this repo has no BSR module, and the action's push/archive steps
-          # (both of which default to ON for the events this workflow runs on) would fail looking
-          # for credentials that do not exist.
-          push: false
-          archive: false
-          # The failing step's log is the report. A PR comment needs pull-requests: write on the
-          # default token, which this workflow does not grant.
-          pr_comment: false
+      - name: Slopwatch
+        run: dotnet slopwatch analyze -d .

@@ -3,9 +3,9 @@
 A **corpus** is a directory of full-frame PNGs the engine can feed through its scan loop instead
 of live capture — the mechanism behind `--replay`, `ReplayFrameSource`, and every replay-parity
 test built on `ReplayHarness`: the engine's own thin smoke here in
-`GameCapture.Engine.Tests/ReplayHarnessTests.cs`, and the plugin suites'
+`Ocrx.Engine.Tests/ReplayHarnessTests.cs`, and the plugin suites'
 `ReplayParityTests.cs` over in
-[`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins).
+[`ocrx-plugins`](https://github.com/PetitCastor/ocrx-plugins).
 
 ## Layout
 
@@ -21,15 +21,15 @@ test built on `ReplayHarness`: the engine's own thin smoke here in
   per corpus — see that repo's `RefineryPlugin.Tests.csproj` and `MissionPlugin.Tests.csproj` for
   the pattern. Scoped per corpus rather than a `corpus\**` catch-all, so one plugin's corpus never
   gets copied into every other plugin's test output. The
-  engine's own `Fixtures/engine-smoke` corpus (`GameCapture.Engine.Tests`) stays local to that project —
+  engine's own `Fixtures/engine-smoke` corpus (`Ocrx.Engine.Tests`) stays local to that project —
   it is the corpus essentially the whole engine-side suite drives (scan loop, gRPC host, SDK
   client, handshake, plugin host, and the `ReplayHarness` smoke), not just the harness.
 
 ## Capturing a corpus in-game
 
 1. Run the engine against the live game with `--save-frames`:
-   `dotnet run --project src\GameCapture.Engine -- --save-frames`
-2. Press the configured hotkey (`%LOCALAPPDATA%\GameCapture\engine-config.json`'s `hotkey`, logged on startup) at each stage
+   `dotnet run --project src\Ocrx.Engine -- --save-frames`
+2. Press the configured hotkey (`%LOCALAPPDATA%\Ocrx\engine-config.json`'s `hotkey`, logged on startup) at each stage
    worth a frame — e.g. for a refinery order: SETUP open, after each scroll, on a REFINE toggle,
    post-CONFIRM, and (for a parity corpus that needs it) one CANCEL. Each press saves one
    full-frame PNG under the configured dump directory.
@@ -43,9 +43,9 @@ see `Program.cs`'s check) — a corpus is captured live, then replayed offline a
 
 - Engine CLI: `--replay <dir>` feeds the directory through the scan loop instead of live capture,
   in the same process shape production uses, then exits when the corpus is exhausted.
-- SDK test harness: `GameCapture.Sdk.Testing.ReplayHarness.RunAsync` spawns a real `GameCapture.Engine.exe`
+- SDK test harness: `Ocrx.Sdk.Testing.ReplayHarness.RunAsync` spawns a real `Ocrx.Engine.exe`
   with `--replay <dir> --pipe <generated>`, drives a plugin against it through the plugin's real
-  `GameCapturePluginHost` path, and returns every emitted record plus how the run ended
+  `OcrxPluginHost` path, and returns every emitted record plus how the run ended
   (`StreamEndReason`, exit code). This is what a plugin's own CI uses for parity, and what every
   replay-parity test in this repo is built on now (TASK-13). Set `ReplayOptions.VideoPath` (with an
   optional `VideoFps`) instead of `CorpusDir` to drive the same run from an MP4 — see
@@ -106,9 +106,9 @@ regardless of how slowly a plugin consumes them.
 
 ## Finding the engine binary
 
-`GameCapture.Sdk.Testing.EngineLocator.Resolve()` — the `GAMECAPTURE_ENGINE_PATH` env var if set (CI
+`Ocrx.Sdk.Testing.EngineLocator.Resolve()` — the `OCRX_ENGINE_PATH` env var if set (CI
 pins this to the exact artifact it built), otherwise walks up from the running test assembly to
-the solution root looking for `src/GameCapture.Engine/bin`, then picks the newest `GameCapture.Engine.exe`
+the solution root looking for `src/Ocrx.Engine/bin`, then picks the newest `Ocrx.Engine.exe`
 under it (Release wins ties over Debug). Right for a dev running tests against whatever they last
 built locally; set the env var to point at a specific build (CI, or testing a published release).
 

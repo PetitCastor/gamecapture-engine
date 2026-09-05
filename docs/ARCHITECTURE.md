@@ -1,6 +1,6 @@
 # Architecture
 
-GameCapture is a screen-capture engine plus one process per plugin. The engine
+Ocrx is a screen-capture engine plus one process per plugin. The engine
 owns capture, OCR, and pixel sampling; plugins own all game-semantic parsing and state. They
 never share memory or a build — a plugin cannot take down capture, another plugin, or the process
 that owns the screen.
@@ -26,7 +26,7 @@ The codebase and docs use the following words consistently:
 
 ```mermaid
 flowchart LR
-    subgraph EngineProc["GameCapture.Engine (Windows-TFM exe, per-user, one instance)"]
+    subgraph EngineProc["Ocrx.Engine (Windows-TFM exe, per-user, one instance)"]
         WGC["WGC monitor capture<br/>MonitorCapture / CaptureInterop"]
         OCR["Windows OCR<br/>OcrPipeline"]
         Hotkey["Low-level keyboard hook<br/>HotkeyListener"]
@@ -41,15 +41,15 @@ flowchart LR
         Loop --> Svc
     end
 
-    Svc <==>|"named pipe gRPC<br/>(HTTP/2, plaintext)"| SdkA["GameCapture.Sdk<br/>in MissionPlugin.exe"]
-    Svc <==>|"named pipe gRPC"| SdkB["GameCapture.Sdk<br/>in RefineryPlugin.exe"]
-    Svc <==>|"named pipe gRPC"| SdkN["GameCapture.Sdk<br/>in plugin N"]
+    Svc <==>|"named pipe gRPC<br/>(HTTP/2, plaintext)"| SdkA["Ocrx.Sdk<br/>in MissionPlugin.exe"]
+    Svc <==>|"named pipe gRPC"| SdkB["Ocrx.Sdk<br/>in RefineryPlugin.exe"]
+    Svc <==>|"named pipe gRPC"| SdkN["Ocrx.Sdk<br/>in plugin N"]
 ```
 
 One named pipe, one gRPC channel per plugin process, one `Track` bidi stream per channel. Every
 scanned frame produces one `TickResult` per connected client — never a partial one — because all
 OCR in the engine happens inside `ScanLoop`, one frame at a time
-(`src/GameCapture.Engine/ScanLoop.cs`). The wire contract, handshake, and the guarantees a plugin
+(`src/Ocrx.Engine/ScanLoop.cs`). The wire contract, handshake, and the guarantees a plugin
 may rely on are the subject of [`docs/PROTOCOL.md`](PROTOCOL.md); this document is about the
 processes and projects that contract sits between.
 
@@ -59,9 +59,9 @@ These were decided once, during the original engine/plugin split, and are not up
 inside a task (the task docs that recorded the decision live under `tasks/`, which is gitignored
 and not part of the repo history — the constraints below are restated in full rather than linked):
 
-- **Windows TFM stops at the engine.** Only `GameCapture.Engine` targets
-  `net10.0-windows10.0.22621.0` (`src/GameCapture.Engine/GameCapture.Engine.csproj`) — it is the only project
-  that touches WGC or Windows OCR. `GameCapture.Contracts`, `GameCapture.Sdk`, `GameCapture.Sdk.Testing`, and every
+- **Windows TFM stops at the engine.** Only `Ocrx.Engine` targets
+  `net10.0-windows10.0.22621.0` (`src/Ocrx.Engine/Ocrx.Engine.csproj`) — it is the only project
+  that touches WGC or Windows OCR. `Ocrx.Contracts`, `Ocrx.Sdk`, `Ocrx.Sdk.Testing`, and every
   plugin target plain `net10.0`, so a plugin (or its CI) never needs a Windows OCR language pack to
   build or unit-test.
 - **Per-tick atomicity.** Everything a plugin needs for one decision arrives in one `TickResult`
@@ -83,13 +83,13 @@ and not part of the repo history — the constraints below are restated in full 
 | Component | Path | Role |
 | --- | --- | --- |
 | `protos/capture.proto` | `protos/capture.proto` | The wire contract: `CaptureEngineService` (`Track`/`ReadRoi`/`DumpFrame`/`GetStatus`) and every message shape. Governed by `buf lint` + `buf breaking` in CI (`docs/PROTOCOL.md`). |
-| `GameCapture.Contracts` | `src/GameCapture.Contracts/` | Plain `net10.0` library: generated proto code, plus the pure shared types both sides use — `RoiScaler`, `WireLimits`, `OcrRegionResult`, `PixelPatchSampler`, `RoiRect`, `ProtoMapping`, `ProtocolVersion`. |
-| `GameCapture.Engine` | `src/GameCapture.Engine/` | The only Windows-TFM project. WGC and frame sources live under `Capture/`; OCR and pixel work under `Processing/`; persisted settings under `Configuration/`; dumping and console output under `Operations/`; desktop lifecycle helpers under `Hosting/`; transport under `Grpc/`. `ScanLoop.cs` coordinates frames, `SubscriptionTickProcessor.cs` owns per-client tick construction and delivery, `RetainedFrameStore.cs` owns reference-counted frame lifetime and bounded unary reads, and `SubscriptionRegistry.cs` / `ClientSubscription.cs` own subscriptions. Composed by `EngineHost.cs`, entered from `Program.cs`. |
-| `GameCapture.Sdk` | `src/GameCapture.Sdk/` | Plain `net10.0` client library. `NamedPipeChannel`/`CaptureClient`/`TrackSession` own connection and session behavior; `RoiSubscription`/`RoiKind`/`TickData` declare and read ROIs; `ProtocolNegotiation` owns handshake/version errors; `Plugin/` holds the host layer; and `Plugin/Output/` holds sink contracts, specs, factories, and implementations. |
-| `GameCapture.Sdk.Testing` | `src/GameCapture.Sdk.Testing/` | Public testing companion package (no `InternalsVisibleTo`): `TickDataBuilder`, `FakePluginServices`, `ReplayHarness`, `EngineLocator` — spawns a real `GameCapture.Engine.exe` against a corpus and drives a plugin's real `GameCapturePluginHost` path for parity tests. |
-| `GameCapture.Sdk.Overlay` | `src/GameCapture.Sdk.Overlay/` | Opt-in plain-`net10.0` package that implements the SDK's overlay factory and a Windows click-through `IRecordSink`; on non-Windows it resolves to a no-op, so the core SDK remains portable. |
-| `MissionPlugin` | [`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins) | Tracks mission-board text via `IGameCapturePlugin`. Lives in the plugins repo — a pure SDK consumer, not built here. |
-| `RefineryPlugin` | [`gamecapture-plugins`](https://github.com/PetitCastor/gamecapture-plugins) | Tracks refinery work orders via `IGameCapturePlugin`; owns the order ledger. Same repo as above. |
+| `Ocrx.Contracts` | `src/Ocrx.Contracts/` | Plain `net10.0` library: generated proto code, plus the pure shared types both sides use — `RoiScaler`, `WireLimits`, `OcrRegionResult`, `PixelPatchSampler`, `RoiRect`, `ProtoMapping`, `ProtocolVersion`. |
+| `Ocrx.Engine` | `src/Ocrx.Engine/` | The only Windows-TFM project. WGC and frame sources live under `Capture/`; OCR and pixel work under `Processing/`; persisted settings under `Configuration/`; dumping and console output under `Operations/`; desktop lifecycle helpers under `Hosting/`; transport under `Grpc/`. `ScanLoop.cs` coordinates frames, `SubscriptionTickProcessor.cs` owns per-client tick construction and delivery, `RetainedFrameStore.cs` owns reference-counted frame lifetime and bounded unary reads, and `SubscriptionRegistry.cs` / `ClientSubscription.cs` own subscriptions. Composed by `EngineHost.cs`, entered from `Program.cs`. |
+| `Ocrx.Sdk` | `src/Ocrx.Sdk/` | Plain `net10.0` client library. `NamedPipeChannel`/`CaptureClient`/`TrackSession` own connection and session behavior; `RoiSubscription`/`RoiKind`/`TickData` declare and read ROIs; `ProtocolNegotiation` owns handshake/version errors; `Plugin/` holds the host layer; and `Plugin/Output/` holds sink contracts, specs, factories, and implementations. |
+| `Ocrx.Sdk.Testing` | `src/Ocrx.Sdk.Testing/` | Public testing companion package (no `InternalsVisibleTo`): `TickDataBuilder`, `FakePluginServices`, `ReplayHarness`, `EngineLocator` — spawns a real `Ocrx.Engine.exe` against a corpus and drives a plugin's real `OcrxPluginHost` path for parity tests. |
+| `Ocrx.Sdk.Overlay` | `src/Ocrx.Sdk.Overlay/` | Opt-in plain-`net10.0` package that implements the SDK's overlay factory and a Windows click-through `IRecordSink`; on non-Windows it resolves to a no-op, so the core SDK remains portable. |
+| `MissionPlugin` | [`ocrx-plugins`](https://github.com/PetitCastor/ocrx-plugins) | Tracks mission-board text via `IOcrxPlugin`. Lives in the plugins repo — a pure SDK consumer, not built here. |
+| `RefineryPlugin` | [`ocrx-plugins`](https://github.com/PetitCastor/ocrx-plugins) | Tracks refinery work orders via `IOcrxPlugin`; owns the order ledger. Same repo as above. |
 | `tests/` | `tests/` | One test project per component that lives here. Plugin replay corpora live with the plugins, in the plugins repo (`docs/REPLAY.md`). |
 
 ## Interactive surface
@@ -135,7 +135,7 @@ plain ES modules, no bundler).
   does, every budget and constant, replay mode, and the hotkey/`--save-frames` path.
 - [`docs/REPLAY.md`](REPLAY.md) — corpus layout, capturing one in-game, and how `ReplayHarness`
   runs one against a real plugin.
-- [`docs/PLUGIN-AUTHORING.md`](PLUGIN-AUTHORING.md) — how to write a new `IGameCapturePlugin` from
+- [`docs/PLUGIN-AUTHORING.md`](PLUGIN-AUTHORING.md) — how to write a new `IOcrxPlugin` from
   scratch: project setup, the tick surface, ROI calibration, error policy, and testing.
 - [`docs/COMPATIBILITY.md`](COMPATIBILITY.md) — protocol/engine/SDK version matrix and the rules for
   bumping each.
