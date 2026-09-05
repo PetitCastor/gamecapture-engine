@@ -172,6 +172,49 @@ internal static class ControlApi
             }
         });
 
+        // Per-plugin, so it sits with the other /api/plugins/{id}/* actions rather than with the
+        // manager-wide preview toggle below. No inFlight guard: this writes a preference, never the
+        // install folder, so it cannot collide with an install or a launch the way those collide with
+        // each other. The response is the one row field that changed, not a refreshed row set — a
+        // checkbox must not cost a catalog fetch and a version probe per plugin.
+        app.MapPost("/api/plugins/{id}/autostart", async (string id, HttpContext context) =>
+        {
+            if (state.Controls?.Plugins is not { } plugins)
+                return ServiceUnavailable("plugin management is unavailable");
+
+            PluginAutoStartPatch? patch;
+            try
+            {
+                patch = await context.Request.ReadFromJsonAsync<PluginAutoStartPatch>(JsonOptions, context.RequestAborted);
+            }
+            catch (JsonException)
+            {
+                return BadRequest("invalid auto-start body");
+            }
+
+            if (patch?.Enabled is null)
+                return BadRequest("invalid auto-start body");
+
+            // Only an installed plugin can be auto-started, so an id that is merely in the catalog is
+            // rejected rather than silently recorded against a future install.
+            if (!plugins.Installer.State.TryGet(id, out _))
+                return BadRequest("unknown plugin id");
+
+            try
+            {
+                // Mutation and write in one locked step inside the settings object, so two toggles in
+                // flight at once (two rows, or one checkbox double-clicked) cannot lose each other's
+                // change or leave memory disagreeing with disk.
+                plugins.Settings.SetAutoStart(id, patch.Enabled.Value);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return Results.Json(new { error = "the operation failed" }, JsonOptions, statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            return Results.Json(new { autoStart = patch.Enabled.Value }, JsonOptions);
+        });
+
         // Read-only, so no inFlight guard: nothing here mutates a plugin and two readers cannot collide.
         // The drawer polls this with a cursor rather than riding /api/events, because that hub has no
         // per-client subscription — every message goes to every socket — and was built for a change-only
@@ -485,6 +528,19 @@ internal static class ControlApi
                             // that no longer exists.
                             plugins.Launcher.Logs?.Drop(id);
                             plugins.Installer.Uninstall(id);
+                            // The auto-start opt-out belongs to an install, not to an id: leaving it
+                            // behind would make a later reinstall silently inherit a decision the user
+                            // made about a plugin they have since deleted, and would grow the opt-out
+                            // list forever.
+                            try
+                            {
+                                plugins.Settings.SetAutoStart(id, true);
+                            }
+                            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                            {
+                                // The plugin is already gone; a preference the next install will simply
+                                // default is not worth failing a completed uninstall over.
+                            }
                             break;
                         }
                     case "start":

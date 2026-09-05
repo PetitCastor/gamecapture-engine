@@ -139,6 +139,15 @@ internal sealed class EngineDesktopLifetime : IDisposable
         // sampler (MetricsSampler is stateful and single-threaded by contract).
         if (_metrics is not null)
             _metrics.Sampled += _tray.OnMetrics;
+
+        // Last, and only for an interactive run: the pipe is already bound (Program.cs awaited
+        // StartAsync before building this lifetime) so a plugin launched here can connect
+        // immediately, and the tray/window already exist so the rows it flips to Running have
+        // somewhere to appear. Plugins started this way are the engine's children like any other, so
+        // Stop() below kills them with everything else — including on the settings-restart path,
+        // where the relaunched process runs this pass again.
+        if (controls.Plugins is { } plugins)
+            PluginAutoStarter.StartAll(plugins, _sink.WriteLine);
     }
 
     /// <summary>

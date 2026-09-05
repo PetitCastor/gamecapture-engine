@@ -13,6 +13,8 @@ internal static class PluginRowBuilder
     /// <param name="runningIds">Ids this engine currently has a live child process for.</param>
     /// <param name="latestVersions">Release tags resolved per id; an id missing here simply has no
     /// update information, which never reads as an update being available.</param>
+    /// <param name="readAutoStart">Whether the engine launches this entry at startup; absent means
+    /// the default, on.</param>
     public static IReadOnlyList<PluginRow> Build(
         IReadOnlyList<CatalogEntry> catalog,
         IReadOnlyDictionary<string, InstalledPlugin> installed,
@@ -20,7 +22,8 @@ internal static class PluginRowBuilder
         IReadOnlyDictionary<string, string> latestVersions,
         IReadOnlyCollection<string>? updatesPausedIds = null,
         Func<CatalogEntry, RoiOverlayState>? readRoiOverlayState = null,
-        Func<CatalogEntry, bool>? readHasLogs = null)
+        Func<CatalogEntry, bool>? readHasLogs = null,
+        Func<CatalogEntry, bool>? readAutoStart = null)
     {
         var rows = new List<PluginRow>(catalog.Count);
 
@@ -56,7 +59,8 @@ internal static class PluginRowBuilder
                 updatesPaused,
                 roiOverlay.CanShow,
                 roiOverlay.IsVisible,
-                readHasLogs?.Invoke(entry) ?? false));
+                readHasLogs?.Invoke(entry) ?? false,
+                readAutoStart?.Invoke(entry) ?? true));
         }
 
         return rows;

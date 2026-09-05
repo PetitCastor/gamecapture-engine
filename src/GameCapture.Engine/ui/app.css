@@ -430,6 +430,11 @@ svg { display: block; }
 }
 .checkbox-row input { accent-color: var(--accent); width: 14px; height: 14px; }
 
+.plugin-autostart {
+  margin-top: 8px;
+  color: var(--text-dim);
+}
+
 .catalog-note {
   font-size: 11px;
   color: var(--text-dim);

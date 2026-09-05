@@ -541,6 +541,118 @@ public class ControlApiTests
     }
 
     [Fact]
+    public async Task PluginRows_ReportAutoStartOnByDefault()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+
+        var install = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/install", null);
+        install.EnsureSuccessStatusCode();
+
+        var rows = await client.GetFromJsonAsync<JsonElement>("/api/plugins");
+        var row = rows.EnumerateArray().First();
+        Assert.True(row.GetProperty("autoStart").GetBoolean());
+        Assert.True(row.GetProperty("canSetAutoStart").GetBoolean());
+    }
+
+    /// <summary>The toggle is a choice about an install, so a catalog row with nothing on disk offers
+    /// no box to tick.</summary>
+    [Fact]
+    public async Task PluginRow_DoesNotOfferAutoStartBeforeInstall()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+
+        var rows = await client.GetFromJsonAsync<JsonElement>("/api/plugins");
+
+        Assert.False(rows.EnumerateArray().First().GetProperty("canSetAutoStart").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TurningAutoStartOff_PersistsAndShowsOnTheRow()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        var install = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/install", null);
+        install.EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/autostart",
+            new { enabled = false });
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("autoStart").GetBoolean());
+        Assert.False(harness.PluginSettings.IsAutoStartEnabled(FakePluginCatalogHandler.PluginId));
+
+        var rows = await client.GetFromJsonAsync<JsonElement>("/api/plugins");
+        Assert.False(rows.EnumerateArray().First().GetProperty("autoStart").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TurningAutoStartBackOn_ShowsOnTheRow()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        var install = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/install", null);
+        install.EnsureSuccessStatusCode();
+        await client.PostAsJsonAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/autostart", new { enabled = false });
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/autostart",
+            new { enabled = true });
+
+        response.EnsureSuccessStatusCode();
+        Assert.True(harness.PluginSettings.IsAutoStartEnabled(FakePluginCatalogHandler.PluginId));
+    }
+
+    [Fact]
+    public async Task AutoStartForAnUninstalledPlugin_Returns400()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/autostart",
+            new { enabled = false });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AutoStartWithoutAnEnabledField_Returns400()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        var install = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/install", null);
+        install.EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/plugins/{FakePluginCatalogHandler.PluginId}/autostart",
+            new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>The opt-out is a decision about an install. Once that install is deleted, a later one
+    /// of the same id must start from the default rather than inherit it.</summary>
+    [Fact]
+    public async Task UninstallingAPlugin_ForgetsItsAutoStartOptOut()
+    {
+        await using var harness = await ControlApiHarness.StartAsync(new FakePluginCatalogHandler());
+        using var client = harness.AuthorizedClient();
+        var install = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/install", null);
+        install.EnsureSuccessStatusCode();
+        await client.PostAsJsonAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/autostart", new { enabled = false });
+
+        var uninstall = await client.PostAsync($"/api/plugins/{FakePluginCatalogHandler.PluginId}/uninstall", null);
+        uninstall.EnsureSuccessStatusCode();
+
+        Assert.True(harness.PluginSettings.IsAutoStartEnabled(FakePluginCatalogHandler.PluginId));
+        Assert.Empty(harness.PluginSettings.AutoStartDisabledIds);
+    }
+
+    [Fact]
     public async Task ConcurrentPluginActionForTheSameId_Returns409()
     {
         var handler = new FakePluginCatalogHandler { BlockDownloads = true };

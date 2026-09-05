@@ -15,6 +15,9 @@ namespace GameCapture.Engine.Plugins;
 /// exists from the moment the process starts, which is exactly when
 /// <see cref="PluginLauncher.Changed"/> already fires, so the existing push carries this with no extra
 /// wiring. A plugin that starts and stays silent shows the button over a panel that says so.</param>
+/// <param name="AutoStart">Whether the engine launches this plugin for the user at startup. On by
+/// default, so a row for a plugin the user has never had an opinion about reads as on; only
+/// meaningful once installed, which is the only state the toggle is offered in.</param>
 public sealed record PluginRow(
     CatalogEntry Entry,
     PluginRowState State,
@@ -24,7 +27,8 @@ public sealed record PluginRow(
     bool UpdatesPaused,
     bool CanShowRois = false,
     bool IsRoiOverlayVisible = false,
-    bool HasLogs = false)
+    bool HasLogs = false,
+    bool AutoStart = true)
 {
     /// <summary>Catalog id, the key everything else is addressed by.</summary>
     public string Id => Entry.Id;
@@ -68,4 +72,8 @@ public sealed record PluginRow(
 
     /// <summary>Only this engine's own child processes can be stopped from here.</summary>
     public bool CanStop => IsRunning;
+
+    /// <summary>Auto-start is a choice about an installed plugin, so the toggle is offered exactly
+    /// when there is something on disk for the next engine start to launch.</summary>
+    public bool CanSetAutoStart => State is PluginRowState.Installed or PluginRowState.UpdateAvailable;
 }
