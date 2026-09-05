@@ -131,7 +131,21 @@ public sealed class PluginManagerSettings
             IncludePreviews,
             [.. _autoStartDisabled.Order(StringComparer.Ordinal)]);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(FilePath))!);
-        File.WriteAllText(FilePath, JsonSerializer.Serialize(document, JsonOptions));
+        var directory = Path.GetDirectoryName(Path.GetFullPath(FilePath))!;
+        Directory.CreateDirectory(directory);
+
+        // A completed write is swapped in as one filesystem operation, so an interrupted process
+        // leaves the previous valid settings document rather than a truncated one that loses opt-outs.
+        var temporaryPath = Path.Combine(directory, $".{Path.GetFileName(FilePath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(document, JsonOptions));
+            File.Move(temporaryPath, FilePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
     }
 }

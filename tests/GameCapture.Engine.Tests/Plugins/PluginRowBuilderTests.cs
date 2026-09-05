@@ -137,6 +137,15 @@ public class PluginRowBuilderTests
     }
 
     [Fact]
+    public void BlockedInstalledPlugin_StillOffersAutoStartChoice()
+    {
+        var row = Build(Entry(url: "https://attacker.example/evil.zip"), Installed());
+
+        Assert.Equal(PluginRowState.Blocked, row.State);
+        Assert.True(row.CanSetAutoStart);
+    }
+
+    [Fact]
     public void RowsFollowCatalogOrder()
     {
         var rows = PluginRowBuilder.Build(

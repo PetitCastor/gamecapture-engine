@@ -74,6 +74,7 @@ public sealed record PluginRow(
     public bool CanStop => IsRunning;
 
     /// <summary>Auto-start is a choice about an installed plugin, so the toggle is offered exactly
-    /// when there is something on disk for the next engine start to launch.</summary>
-    public bool CanSetAutoStart => State is PluginRowState.Installed or PluginRowState.UpdateAvailable;
+    /// when there is something on disk for the next engine start to launch, even if the current
+    /// catalog entry has since become blocked.</summary>
+    public bool CanSetAutoStart => InstalledVersion.Length > 0;
 }
