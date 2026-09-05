@@ -1,0 +1,611 @@
+{
+  "version": 1,
+  "createdAt": "2026-09-05T13:12:11.5635397+00:00",
+  "updatedAt": "2026-09-05T13:12:11.5655645+00:00",
+  "description": "Initial baseline created by 'slopwatch init' on 2026-09-05 13:12:11 UTC",
+  "entries": [
+    {
+      "hash": "c29106f8290b749b",
+      "ruleId": "SW005",
+      "filePath": "src/GameCapture.Contracts/GameCapture.Contracts.csproj",
+      "lineNumber": 22,
+      "codeSnippet": "<NoWarn>$(NoWarn);CS1591</NoWarn>",
+      "message": "Adding warnings to NoWarn: CS1591",
+      "baselinedAt": "2026-09-05T13:12:11.5653425+00:00"
+    },
+    {
+      "hash": "d8958486ede9b631",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/EngineHost.cs",
+      "lineNumber": 130,
+      "codeSnippet": "catch (OperationCanceledException) { /* grace period elapsed; stop anyway */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5653952+00:00"
+    },
+    {
+      "hash": "321a9108059c27ae",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/RoiOverlayRenderer.cs",
+      "lineNumber": 155,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654028+00:00"
+    },
+    {
+      "hash": "1ccf76b98779ccb3",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Capture/MonitorCapture.cs",
+      "lineNumber": 49,
+      "codeSnippet": "catch { /* older OS builds: cosmetic only */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654047+00:00"
+    },
+    {
+      "hash": "45baac4b4a7ed4b2",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Configuration/EngineConfig.cs",
+      "lineNumber": 107,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n                {\r\n                    // Best-effort: the new default still applies for this run from `seeded` below,\r\n                    // and the next successful load offers it again. A read-only file must not stop\r\n                    // the engine from starting with the config it already successfully read.\r\n    // ...",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654192+00:00"
+    },
+    {
+      "hash": "04ec47e0c91f4c2d",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Configuration/EngineConfig.cs",
+      "lineNumber": 157,
+      "codeSnippet": "catch (IOException)\r\n            {\r\n                // Losing the temp file matters less than the exception on its way up.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654214+00:00"
+    },
+    {
+      "hash": "1c0c2d31931eefcc",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Grpc/CaptureGrpcService.cs",
+      "lineNumber": 205,
+      "codeSnippet": "catch (OperationCanceledException) when (ctx.CancellationToken.IsCancellationRequested)\r\n        {\r\n            // Same for the response side.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.565424+00:00"
+    },
+    {
+      "hash": "b869e39d2ebd374c",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApi.cs",
+      "lineNumber": 451,
+      "codeSnippet": "catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)\r\n                    {\r\n                        // Preview access is opt-in and best-effort; degrade to stable only.\r\n                    }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654272+00:00"
+    },
+    {
+      "hash": "4964d6607baf4b4f",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApi.cs",
+      "lineNumber": 470,
+      "codeSnippet": "catch (HttpRequestException)\r\n                    {\r\n                        // Leave this row without update information.\r\n                    }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654295+00:00"
+    },
+    {
+      "hash": "1c31dc0565a338e9",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApi.cs",
+      "lineNumber": 539,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n                            {\r\n                                // The plugin is already gone; a preference the next install will simply\r\n                                // default is not worth failing a completed uninstall over.\r\n                            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654325+00:00"
+    },
+    {
+      "hash": "df04af79602d276a",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 94,
+      "codeSnippet": "catch (OperationCanceledException)\r\n        {\r\n            // Client dropped, or the engine is shutting down (Dispose cancels every connection below).\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654348+00:00"
+    },
+    {
+      "hash": "0c153c480a88faea",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 98,
+      "codeSnippet": "catch (WebSocketException)\r\n        {\r\n            // Connection reset from the other side; nothing to clean up beyond what finally does.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.565437+00:00"
+    },
+    {
+      "hash": "87faf14a5a0e3055",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 102,
+      "codeSnippet": "catch (ObjectDisposedException)\r\n        {\r\n            // Engine shutdown aborted the socket while this request was between operations.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654387+00:00"
+    },
+    {
+      "hash": "d19a2ef55197d7d5",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 114,
+      "codeSnippet": "catch (WebSocketException)\r\n            {\r\n                // Already gone; nothing left to close cleanly.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654409+00:00"
+    },
+    {
+      "hash": "ec4083504cbeba45",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 118,
+      "codeSnippet": "catch (ObjectDisposedException)\r\n            {\r\n                // Shutdown disposed the transport before the close handshake could begin.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654427+00:00"
+    },
+    {
+      "hash": "6235489b2a8eb1d8",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 225,
+      "codeSnippet": "catch (Exception ex) when (ex is WebSocketException or ObjectDisposedException)\r\n            {\r\n                // The socket died between the state check and the send; RunAsync's own loop notices\r\n                // and removes it — one dead connection must never fault the broadcast to every other.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654452+00:00"
+    },
+    {
+      "hash": "2da27bab6fd0235d",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/ControlApiEventHub.cs",
+      "lineNumber": 273,
+      "codeSnippet": "catch (ObjectDisposedException)\r\n            {\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654471+00:00"
+    },
+    {
+      "hash": "02a4c1d400bb13ad",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/StartupDiagnostics.cs",
+      "lineNumber": 57,
+      "codeSnippet": "catch\r\n        {\r\n            // A non-interactive session may have no writable profile; reporting must never mask the\r\n            // original startup failure.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654492+00:00"
+    },
+    {
+      "hash": "5ffc75e31ba878a2",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Hosting/StartupDiagnostics.cs",
+      "lineNumber": 70,
+      "codeSnippet": "catch\r\n        {\r\n            // Window stations without an interactive desktop cannot display UI; there is no further\r\n            // user-facing channel available in a tray-only process.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654514+00:00"
+    },
+    {
+      "hash": "50e03229798dca6f",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Operations/ConsoleSink.cs",
+      "lineNumber": 36,
+      "codeSnippet": "catch (IOException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654531+00:00"
+    },
+    {
+      "hash": "bfefa39e14661070",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Operations/ConsoleSink.cs",
+      "lineNumber": 113,
+      "codeSnippet": "catch (Exception e) when (e is IOException or ArgumentOutOfRangeException)\r\n        {\r\n            // Terminal resized/detached mid-operation; next redraw self-corrects.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654734+00:00"
+    },
+    {
+      "hash": "b0eb63cbd2d9d5fc",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Operations/ConsoleSink.cs",
+      "lineNumber": 134,
+      "codeSnippet": "catch (Exception e) when (e is IOException or ArgumentOutOfRangeException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654754+00:00"
+    },
+    {
+      "hash": "96011f4efb6df6bc",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Plugins/PluginInstaller.cs",
+      "lineNumber": 279,
+      "codeSnippet": "catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)\r\n        {\r\n            // Staging leftovers are named with a fresh GUID per attempt, so one that cannot be\r\n            // deleted now costs disk space rather than correctness; never fail an install over it.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654775+00:00"
+    },
+    {
+      "hash": "aa0123fc7b99361b",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Plugins/PluginInstallState.cs",
+      "lineNumber": 128,
+      "codeSnippet": "catch (IOException)\r\n                {\r\n                    // Best-effort cleanup; a leftover .tmp costs disk space, not correctness.\r\n                }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654797+00:00"
+    },
+    {
+      "hash": "01e13ed47983bc4c",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Plugins/PluginLauncher.cs",
+      "lineNumber": 228,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)\r\n        {\r\n            // Already gone, or exited between the check and the kill.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654822+00:00"
+    },
+    {
+      "hash": "3cf2dfcd2daf6d31",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Plugins/PluginLauncher.cs",
+      "lineNumber": 271,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)\r\n            {\r\n                // Never started, or already reaped.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654842+00:00"
+    },
+    {
+      "hash": "44e96552c7780fb7",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Plugins/PluginManagerSettings.cs",
+      "lineNumber": 62,
+      "codeSnippet": "catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)\r\n        {\r\n            // Preview access is opt-in, so a missing or unreadable preference must never enable it.\r\n            // Auto-start defaults the other way, and an unreadable file is not evidence that the user\r\n            // opted a plugin out — a plugin the engine starts that the user did not want is one visible\r\n    // ...",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654872+00:00"
+    },
+    {
+      "hash": "161d287392e911e0",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Shell/MainWindow.cs",
+      "lineNumber": 106,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n        {\r\n            // The UI thread's handle is already gone (shutdown race); nothing left to theme.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654901+00:00"
+    },
+    {
+      "hash": "693508067349ca4c",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Shell/MainWindow.cs",
+      "lineNumber": 291,
+      "codeSnippet": "catch (Win32Exception)\r\n        {\r\n            // No default browser association on this machine; nothing more this can do.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654948+00:00"
+    },
+    {
+      "hash": "bc043377c3575fa9",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Shell/SingleInstance.cs",
+      "lineNumber": 108,
+      "codeSnippet": "catch (FileNotFoundException)\r\n        {\r\n            // The first instance can still be between claiming the mutex and publishing its PID.\r\n            // Signalling remains useful: its window will handle the event as soon as it is ready.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5654972+00:00"
+    },
+    {
+      "hash": "214a68bb29b6bc53",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Shell/SingleInstance.cs",
+      "lineNumber": 125,
+      "codeSnippet": "catch (WaitHandleCannotBeOpenedException)\r\n        {\r\n            // Lost a race with the first instance between its mutex creation and its event creation —\r\n            // vanishingly unlikely, and harmless either way: that instance is already coming up, and\r\n            // this launch is exiting regardless.\r\n    // ...",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655012+00:00"
+    },
+    {
+      "hash": "2967045197d682ee",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Shell/WindowChrome.cs",
+      "lineNumber": 57,
+      "codeSnippet": "catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)\r\n        {\r\n            // dwmapi.dll (or this specific export) unavailable on this build/session — same\r\n            // \"not supported here\" outcome as a non-zero HRESULT.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655034+00:00"
+    },
+    {
+      "hash": "6aecb84cf6fcf7f1",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Tray/TrayApplication.cs",
+      "lineNumber": 216,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread's handle is already gone; nothing left to show.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655055+00:00"
+    },
+    {
+      "hash": "714ca5194ddb1ce5",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Tray/TrayApplication.cs",
+      "lineNumber": 335,
+      "codeSnippet": "catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)\r\n            {\r\n                // The UI thread's message loop / handle is already gone; nothing left to unwind.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655074+00:00"
+    },
+    {
+      "hash": "e6ba3333b7cc3dfc",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Engine/Updates/EngineUpdateChecker.cs",
+      "lineNumber": 132,
+      "codeSnippet": "catch\r\n        {\r\n            // Already logged to the sink above; no further user-facing channel exists here.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655094+00:00"
+    },
+    {
+      "hash": "f067a717cb2e3755",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/CaptureClient.cs",
+      "lineNumber": 434,
+      "codeSnippet": "catch (RpcException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655111+00:00"
+    },
+    {
+      "hash": "ca2da23b773ca850",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/CaptureClient.cs",
+      "lineNumber": 435,
+      "codeSnippet": "catch (InvalidOperationException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655124+00:00"
+    },
+    {
+      "hash": "8ebf77b20beb58d2",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/CaptureClient.cs",
+      "lineNumber": 442,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655137+00:00"
+    },
+    {
+      "hash": "eb85468ce5bee2de",
+      "ruleId": "SW005",
+      "filePath": "src/GameCapture.Sdk/GameCapture.Sdk.csproj",
+      "lineNumber": 20,
+      "codeSnippet": "<NoWarn>$(NoWarn);CS1591</NoWarn>",
+      "message": "Adding warnings to NoWarn: CS1591",
+      "baselinedAt": "2026-09-05T13:12:11.5655156+00:00"
+    },
+    {
+      "hash": "76741d1d4b47324a",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/Plugin/ConfigSeed.cs",
+      "lineNumber": 252,
+      "codeSnippet": "catch (IOException)\r\n            {\r\n                // Losing the temp file matters less than the exception on its way up.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655177+00:00"
+    },
+    {
+      "hash": "1d9f1ba8836b8c36",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/Plugin/Output/CompositeRecordSink.cs",
+      "lineNumber": 11,
+      "codeSnippet": "catch (Exception) { /* one failing sink must not block the others */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655195+00:00"
+    },
+    {
+      "hash": "a96d58188609e568",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/Plugin/Output/ConsoleSink.cs",
+      "lineNumber": 27,
+      "codeSnippet": "catch (IOException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.565521+00:00"
+    },
+    {
+      "hash": "4fa1e1b5419e4a1e",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/Plugin/Output/ConsoleSink.cs",
+      "lineNumber": 104,
+      "codeSnippet": "catch (Exception e) when (e is IOException or ArgumentOutOfRangeException)\r\n        {\r\n            // Terminal resized/detached mid-operation; next redraw self-corrects.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655241+00:00"
+    },
+    {
+      "hash": "0a5cbdb82c0fa0ed",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk/Plugin/Output/ConsoleSink.cs",
+      "lineNumber": 125,
+      "codeSnippet": "catch (Exception e) when (e is IOException or ArgumentOutOfRangeException)\r\n        {\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655258+00:00"
+    },
+    {
+      "hash": "d635de4a5a2d01a0",
+      "ruleId": "SW005",
+      "filePath": "src/GameCapture.Sdk.Testing/GameCapture.Sdk.Testing.csproj",
+      "lineNumber": 19,
+      "codeSnippet": "<NoWarn>$(NoWarn);CS1591</NoWarn>",
+      "message": "Adding warnings to NoWarn: CS1591",
+      "baselinedAt": "2026-09-05T13:12:11.5655274+00:00"
+    },
+    {
+      "hash": "f9d4964fec2e67a8",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk.Testing/ReplayHarness.cs",
+      "lineNumber": 114,
+      "codeSnippet": "catch { /* the TimeoutException below is what the caller sees */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.565529+00:00"
+    },
+    {
+      "hash": "dfde9bdbf994b0b2",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk.Testing/ReplayHarness.cs",
+      "lineNumber": 127,
+      "codeSnippet": "catch (OperationCanceledException) { /* the finally below kills the tree */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655304+00:00"
+    },
+    {
+      "hash": "f98aaf0bb0e9eb33",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk.Testing/ReplayHarness.cs",
+      "lineNumber": 148,
+      "codeSnippet": "catch (InvalidOperationException) { /* already exited */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.565532+00:00"
+    },
+    {
+      "hash": "b96050ffd031e0dd",
+      "ruleId": "SW003",
+      "filePath": "src/GameCapture.Sdk.Testing/ReplayHarness.cs",
+      "lineNumber": 149,
+      "codeSnippet": "catch (Win32Exception) { /* already exited/exiting */ }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655333+00:00"
+    },
+    {
+      "hash": "064b3ec2b6a9e219",
+      "ruleId": "SW005",
+      "filePath": "templates/GameCapture.Plugin.Template.csproj",
+      "lineNumber": 25,
+      "codeSnippet": "<NoWarn>$(NoWarn);NU5128</NoWarn>",
+      "message": "Adding warnings to NoWarn: NU5128",
+      "baselinedAt": "2026-09-05T13:12:11.5655349+00:00"
+    },
+    {
+      "hash": "659e54782cdb35a1",
+      "ruleId": "SW003",
+      "filePath": "templates/gamecapture-plugin/MyCapturePlugin.cs",
+      "lineNumber": 79,
+      "codeSnippet": "catch\r\n        {\r\n            // Debugging aid only: a failed dump must never take down the tick that already emitted.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655371+00:00"
+    },
+    {
+      "hash": "1395334ee167eea9",
+      "ruleId": "SW001",
+      "filePath": "templates/gamecapture-plugin/tests/MyCapturePluginTests.cs",
+      "lineNumber": 65,
+      "codeSnippet": "Fact(Skip = \"needs corpus + GAMECAPTURE_ENGINE_PATH\")",
+      "message": "Test method 'Corpus_emits_one_record' is disabled: needs corpus + GAMECAPTURE_ENGINE_PATH",
+      "baselinedAt": "2026-09-05T13:12:11.5655384+00:00"
+    },
+    {
+      "hash": "cc5bd590c1398a66",
+      "ruleId": "SW003",
+      "filePath": "tests/GameCapture.Engine.Tests/FrameDumpServiceTests.cs",
+      "lineNumber": 59,
+      "codeSnippet": "catch { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655404+00:00"
+    },
+    {
+      "hash": "2bf631782488a4f4",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/FrameDumpServiceTests.cs",
+      "lineNumber": 25,
+      "codeSnippet": "Task.Delay(25)",
+      "message": "Test uses Task.Delay(25) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655417+00:00"
+    },
+    {
+      "hash": "7d786fbe955f3e97",
+      "ruleId": "SW003",
+      "filePath": "tests/GameCapture.Engine.Tests/GrpcHostTests.cs",
+      "lineNumber": 179,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655434+00:00"
+    },
+    {
+      "hash": "190fcceabd231abc",
+      "ruleId": "SW003",
+      "filePath": "tests/GameCapture.Engine.Tests/PluginHostIntegrationTests.cs",
+      "lineNumber": 429,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655449+00:00"
+    },
+    {
+      "hash": "f55556b96853ee9f",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/PluginHostIntegrationTests.cs",
+      "lineNumber": 485,
+      "codeSnippet": "Task.Delay(25, ct)",
+      "message": "Test uses Task.Delay(25) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655463+00:00"
+    },
+    {
+      "hash": "4ae35957e22aa8e3",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/PluginHostIntegrationTests.cs",
+      "lineNumber": 499,
+      "codeSnippet": "Task.Delay(10, ct)",
+      "message": "Test uses Task.Delay(10) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655477+00:00"
+    },
+    {
+      "hash": "5c5fc6c97a21d7ac",
+      "ruleId": "SW003",
+      "filePath": "tests/GameCapture.Engine.Tests/ProtocolHandshakeTests.cs",
+      "lineNumber": 153,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655491+00:00"
+    },
+    {
+      "hash": "d34af99d7b93228c",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/ProtocolHandshakeTests.cs",
+      "lineNumber": 162,
+      "codeSnippet": "Task.Delay(10, ct)",
+      "message": "Test uses Task.Delay(10) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655504+00:00"
+    },
+    {
+      "hash": "330f1af5e6dc932b",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/ReplayHarnessTests.cs",
+      "lineNumber": 107,
+      "codeSnippet": "Task.Delay(50, cts.Token)",
+      "message": "Test uses Task.Delay(50) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655518+00:00"
+    },
+    {
+      "hash": "2f3a36a0caf42e0f",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/SdkHandshakeTests.cs",
+      "lineNumber": 426,
+      "codeSnippet": "Task.Delay(Timeout.Infinite, cancellationToken)",
+      "message": "Test uses Task.Delay(Timeout.Infinite) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655535+00:00"
+    },
+    {
+      "hash": "c03f1939391c696e",
+      "ruleId": "SW003",
+      "filePath": "tests/GameCapture.Engine.Tests/SdkTests.cs",
+      "lineNumber": 234,
+      "codeSnippet": "catch (OperationCanceledException) { }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655549+00:00"
+    },
+    {
+      "hash": "cdb8ad1175485235",
+      "ruleId": "SW003",
+      "filePath": "tests/GameCapture.Engine.Tests/Hosting/ControlApiHarness.cs",
+      "lineNumber": 241,
+      "codeSnippet": "catch (IOException)\r\n        {\r\n            // Best-effort cleanup; a leftover temp folder costs disk space, not correctness.\r\n        }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655572+00:00"
+    },
+    {
+      "hash": "c075c6bd7abfa8da",
+      "ruleId": "SW003",
+      "filePath": "tests/GameCapture.Engine.Tests/Hosting/EngineDesktopLifetimeTrayEnabledTests.cs",
+      "lineNumber": 99,
+      "codeSnippet": "catch (IOException)\r\n            {\r\n                // Best-effort cleanup; a leftover temp folder costs disk space, not correctness.\r\n            }",
+      "message": "Empty catch block swallows exceptions without handling",
+      "baselinedAt": "2026-09-05T13:12:11.5655596+00:00"
+    },
+    {
+      "hash": "97c931700ab893bb",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/Plugins/PluginLauncherLogCaptureTests.cs",
+      "lineNumber": 36,
+      "codeSnippet": "Task.Delay(50)",
+      "message": "Test uses Task.Delay(50) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655615+00:00"
+    },
+    {
+      "hash": "2b7e1f4e90b119e8",
+      "ruleId": "SW004",
+      "filePath": "tests/GameCapture.Engine.Tests/Shell/SingleInstanceTests.cs",
+      "lineNumber": 103,
+      "codeSnippet": "Thread.Sleep(50)",
+      "message": "Test uses Thread.Sleep(50) which may indicate a timing-dependent test",
+      "baselinedAt": "2026-09-05T13:12:11.5655644+00:00"
+    }
+  ]
+}
