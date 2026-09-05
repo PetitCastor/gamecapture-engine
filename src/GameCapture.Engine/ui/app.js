@@ -198,6 +198,12 @@ function renderPluginList(rows) {
       else runPluginAction(button.dataset.pluginId, button.dataset.pluginAction);
     });
   });
+  pluginList.querySelectorAll("[data-plugin-autostart]").forEach((checkbox) => {
+    // click, not change: the checkbox lives inside the row's own click handler, and letting that
+    // bubble would collapse the detail pane out from under the box the user just ticked.
+    checkbox.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => setPluginAutoStart(checkbox, checkbox.dataset.pluginId, checkbox.checked));
+  });
   pluginList.querySelectorAll("[data-close-plugin-logs]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -226,6 +232,13 @@ function renderPluginRow(row) {
   const versionSpan = versionText ? `<span class="detail-version">${escapeHtml(versionText)}</span>` : "";
   const errorHtml = error ? `<p class="row-error">${escapeHtml(error)}</p>` : "";
   const logsHtml = pluginLogView?.id === row.id ? renderPluginLogs() : "";
+  const autoStartHtml = row.canSetAutoStart
+    ? `<label class="checkbox-row plugin-autostart">
+        <input type="checkbox" data-plugin-autostart data-plugin-id="${escapeHtml(row.id)}"
+          ${row.autoStart ? "checked" : ""} ${busy ? "disabled" : ""}>
+        Start automatically with the engine
+      </label>`
+    : "";
 
   return `
     <li>
@@ -241,6 +254,7 @@ function renderPluginRow(row) {
         <h3>${escapeHtml(row.name)}${versionSpan}</h3>
         ${description}
         <div class="action-row">${buttonsHtml}</div>
+        ${autoStartHtml}
         ${logsHtml}
         ${errorHtml}
       </div>
@@ -381,6 +395,26 @@ async function runPluginAction(id, action) {
   } finally {
     busyPluginIds.delete(id);
     renderPluginList(pluginRows);
+  }
+}
+
+// Not routed through runPluginAction: nothing here touches the install folder or the running set, so
+// there is no busy state to show and no row refresh to wait for — the local row is patched and
+// re-rendered, which is the whole visible effect of the call.
+async function setPluginAutoStart(checkbox, id, enabled) {
+  pluginRowErrors.delete(id);
+  // Disabled for the duration, like the preview-builds checkbox: without it a double-click puts two
+  // writes in flight and the page keeps whichever response happens to land last, which need not be
+  // the last thing the user clicked.
+  checkbox.disabled = true;
+  try {
+    const result = await api.setPluginAutoStart(id, enabled);
+    const row = pluginRows.find((candidate) => candidate.id === id);
+    if (row) row.autoStart = result?.autoStart ?? enabled;
+  } catch (err) {
+    pluginRowErrors.set(id, err.message); // the row keeps its last persisted value on re-render
+  } finally {
+    renderPluginList(pluginRows); // rebuilds the checkbox, so the disabled flag above goes with it
   }
 }
 

@@ -62,6 +62,7 @@ export const api = {
   uninstallPlugin: (id) => post(`/api/plugins/${encodeURIComponent(id)}/uninstall`),
   startPlugin: (id) => post(`/api/plugins/${encodeURIComponent(id)}/start`),
   stopPlugin: (id) => post(`/api/plugins/${encodeURIComponent(id)}/stop`),
+  setPluginAutoStart: (id, enabled) => post(`/api/plugins/${encodeURIComponent(id)}/autostart`, { enabled }),
   setRoiOverlay: (id, visible) => post(`/api/plugins/${encodeURIComponent(id)}/roi-overlay`, { visible }),
   setIncludePreviews: (includePreviews) => post("/api/plugins/settings", { includePreviews }),
   exit: () => post("/api/exit"),

@@ -15,7 +15,8 @@ internal static class ControlApiPluginRows
             latestVersions,
             PausedPreviewIds(plugins),
             entry => plugins.RoiOverlays?.GetState(entry) ?? default,
-            entry => plugins.Launcher.Logs?.Has(entry.Id) ?? false);
+            entry => plugins.Launcher.Logs?.Has(entry.Id) ?? false,
+            entry => plugins.Settings.IsAutoStartEnabled(entry.Id));
 
     public static IReadOnlyList<CatalogEntry> MergeInstalled(IReadOnlyList<CatalogEntry> catalog, PluginServices plugins)
     {
